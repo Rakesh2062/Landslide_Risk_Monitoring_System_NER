@@ -18,6 +18,7 @@ import CitizenDashboard   from './pages/citizen/CitizenDashboard';
 import CitizenMapPage     from './pages/citizen/CitizenMapPage';
 import CitizenReportsPage from './pages/citizen/CitizenReportsPage';
 import CitizenAlertsPage  from './pages/citizen/CitizenAlertsPage';
+import WeatherSensorsPage from './pages/WeatherSensorsPage';
 
 // Auth & Public pages
 import LandingPage  from './pages/LandingPage';
@@ -81,6 +82,7 @@ export default function App() {
               >
                 <Route path="/citizen"         element={<CitizenDashboard />} />
                 <Route path="/citizen/map"     element={<CitizenMapPage />} />
+                <Route path="/citizen/weather" element={<WeatherSensorsPage />} />
                 <Route path="/citizen/reports" element={<CitizenReportsPage />} />
                 <Route path="/citizen/alerts"  element={<CitizenAlertsPage />} />
               </Route>

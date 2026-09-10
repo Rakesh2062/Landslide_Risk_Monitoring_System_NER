@@ -10,13 +10,14 @@ import { listenForForegroundNotifications } from '../../services/firebaseMessagi
 import { emergencyAudio } from '../../utils/emergencyAudio';
 import { SUPPORTED_LANGUAGES } from '../../i18n/index';
 import {
-  LayoutDashboard, Map, FileText, Bell, X, ChevronLeft, ChevronRight,
+  LayoutDashboard, Map, CloudRain, FileText, Bell, X, ChevronLeft, ChevronRight,
   ShieldCheck, LogOut, Sun, Moon, Wifi, WifiOff, Menu, Globe, ChevronDown,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { path: '/citizen',         label: 'Dashboard',     icon: LayoutDashboard, end: true },
   { path: '/citizen/map',     label: 'Risk Map',      icon: Map },
+  { path: '/citizen/weather', label: 'Weather & Sensors', icon: CloudRain },
   { path: '/citizen/reports', label: 'Field Reports', icon: FileText },
   { path: '/citizen/alerts',  label: 'Alerts',        icon: Bell },
 ];
@@ -201,6 +202,7 @@ export default function CitizenLayout() {
                 <strong className="text-slate-800 dark:text-zinc-200 font-semibold capitalize">
                   {location.pathname === '/citizen' ? 'Dashboard'
                     : location.pathname === '/citizen/map' ? 'Risk Map'
+                    : location.pathname === '/citizen/weather' ? 'Weather & Sensors'
                     : location.pathname === '/citizen/reports' ? 'Field Reports'
                     : location.pathname === '/citizen/alerts' ? 'Alerts'
                     : 'Overview'}
