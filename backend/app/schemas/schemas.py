@@ -192,6 +192,7 @@ class AlertCreateIn(BaseModel):
     message_key: str
     languages: List[str] = ["en"]
     channels: List[str] = ["app"]
+    custom_message: Optional[str] = None
 
 
 class AlertCreatedOut(BaseModel):

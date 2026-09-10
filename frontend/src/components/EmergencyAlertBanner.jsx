@@ -64,11 +64,18 @@ export default function EmergencyAlertBanner() {
   });
 
   // Filter for unacknowledged HIGH or CRITICAL landslide alerts
-  const activeHazardAlerts = alerts.filter(
-    (a) =>
-      (a.severity === 'critical' || a.severity === 'high') &&
-      !acknowledgedIds.includes(a.alert_id)
-  );
+  const deliveryChannels = (alert) => {
+    const channels = alert.channels || alert.sent_via || ['app'];
+    return Array.isArray(channels) ? channels : ['app'];
+  };
+
+  const activeHazardAlerts = alerts.filter((a) => {
+    const isEmergency = a.severity === 'critical' || a.severity === 'high';
+    const isAppDelivery = deliveryChannels(a).some((channel) =>
+      channel === 'app' || channel === 'siren'
+    );
+    return isEmergency && isAppDelivery && !acknowledgedIds.includes(a.alert_id);
+  });
 
   // Pick highest severity active alert (critical first, then latest high)
   const currentHazard = activeHazardAlerts.sort((a, b) => {
@@ -84,11 +91,15 @@ export default function EmergencyAlertBanner() {
     // 1. Record generated alert into persistent Alert History
     emergencyNotifier.recordAlertGenerated(currentHazard);
 
-    // 2. Dispatch browser / PWA notification & vibration (with duplicate prevention)
-    emergencyNotifier.dispatchEmergencyNotification(currentHazard);
+    const channels = deliveryChannels(currentHazard);
 
-    // 3. Play emergency sound if not muted and not already played for this alert
-    if (!isMuted && !emergencyNotifier.hasPlayedSound(currentHazard.alert_id)) {
+    // 2. Dispatch a browser / PWA notification only when the App channel was selected.
+    if (channels.includes('app')) {
+      emergencyNotifier.dispatchEmergencyNotification(currentHazard);
+    }
+
+    // 3. A siren sounds only when the authority selected the Siren channel.
+    if (channels.includes('siren') && !isMuted && !emergencyNotifier.hasPlayedSound(currentHazard.alert_id)) {
       emergencyAudio.playEmergencySignal();
       emergencyNotifier.markSoundPlayed(currentHazard.alert_id);
     }
@@ -103,8 +114,11 @@ export default function EmergencyAlertBanner() {
     setNotifPermission(perm);
 
     if (currentHazard) {
-      emergencyNotifier.dispatchEmergencyNotification(currentHazard);
-      if (!isMuted) {
+      const channels = deliveryChannels(currentHazard);
+      if (channels.includes('app')) {
+        emergencyNotifier.dispatchEmergencyNotification(currentHazard);
+      }
+      if (channels.includes('siren') && !isMuted) {
         emergencyAudio.playEmergencySignal();
       }
     }

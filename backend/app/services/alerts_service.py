@@ -106,11 +106,17 @@ def _mock_send(
         )
         return
 
-    # Demo recipient
-    recipient = getattr(settings, "sms_demo_recipient", "")
+    recipients = [
+        number.strip()
+        for number in getattr(settings, "sms_broadcast_recipients", "").split(",")
+        if number.strip()
+    ]
+    # Backwards-compatible single-recipient setting for local demos.
+    if not recipients and getattr(settings, "sms_demo_recipient", ""):
+        recipients = [settings.sms_demo_recipient]
 
-    if not recipient:
-        logger.warning("[SMS-SKIPPED] No demo recipient configured.")
+    if not recipients:
+        logger.warning("[SMS-SKIPPED] No SMS_BROADCAST_RECIPIENTS configured.")
         return
 
     try:
@@ -121,18 +127,18 @@ def _mock_send(
             settings.twilio_auth_token,
         )
 
-        # Twilio Trial predefined template
-        sms = client.messages.create(
-            body="sms_event_notifications",
-            from_=settings.twilio_from_number,
-            to=recipient,
-        )
-
-        logger.info(
-            "[TWILIO] SMS accepted. zone=%s message_sid=%s",
-            zone_id_str,
-            sms.sid,
-        )
+        for recipient in recipients:
+            sms = client.messages.create(
+                body=message[:1600],
+                from_=settings.twilio_from_number,
+                to=recipient,
+            )
+            logger.info(
+                "[TWILIO] SMS accepted. zone=%s recipient=%s message_sid=%s",
+                zone_id_str,
+                recipient[-4:],
+                sms.sid,
+            )
 
     except Exception as e:
         logger.exception(
@@ -162,12 +168,12 @@ def create_alert(db: Session, data: dict) -> dict:
 
     # Create one alert record per language (store primary language version)
     primary_lang = languages[0]
-    message = _resolve_message(
-    data["message_key"],
-    primary_lang,
-    zone_name=f"{zone.village_name}, {zone.district}",
-    zone_id=data["zone_id"],
-)
+    message = (data.get("custom_message") or "").strip() or _resolve_message(
+        data["message_key"],
+        primary_lang,
+        zone_name=f"{zone.village_name}, {zone.district}",
+        zone_id=data["zone_id"],
+    )
 
     alert = Alert(
         alert_id=alert_id,
@@ -192,6 +198,7 @@ def create_alert(db: Session, data: dict) -> dict:
             body=message,
             alert_id=alert_id,
             severity=data["severity"],
+            channels=channels,
         )
         logger.info("FCM sent alert=%s delivered=%d", alert_id, sent)
 

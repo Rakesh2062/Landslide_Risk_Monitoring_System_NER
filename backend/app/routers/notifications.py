@@ -25,8 +25,6 @@ def register_device(
     user = db.query(User).filter(User.username == current_user.get("sub")).first()
     if not user:
         raise HTTPException(status_code=401, detail="User account no longer exists.")
-    if not user.is_verified:
-        raise HTTPException(status_code=403, detail="Residency verification is required for live alerts.")
     device = db.query(UserDevice).filter(UserDevice.fcm_token == body.token).first()
     if device:
         device.user_id = user.id

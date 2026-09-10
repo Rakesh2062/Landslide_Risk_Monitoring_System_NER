@@ -26,7 +26,7 @@ def _firebase_app():
         return None
 
 
-def send_alert_notification(db, *, title: str, body: str, alert_id: str, severity: str) -> int:
+def send_alert_notification(db, *, title: str, body: str, alert_id: str, severity: str, channels=None) -> int:
     """Send a notification to subscribed browser tokens and prune invalid tokens."""
     app = _firebase_app()
     if app is None:
@@ -35,7 +35,6 @@ def send_alert_notification(db, *, title: str, body: str, alert_id: str, severit
         row[0]
         for row in db.query(UserDevice.fcm_token)
         .join(User, UserDevice.user_id == User.id)
-        .filter(User.is_verified.is_(True))
         .all()
     ]
     if not tokens:
@@ -50,7 +49,12 @@ def send_alert_notification(db, *, title: str, body: str, alert_id: str, severit
             messaging.send(
                 messaging.Message(
                     notification=messaging.Notification(title=title, body=body[:512]),
-                    data={"alert_id": alert_id, "severity": severity, "url": "/citizen/alerts"},
+                    data={
+                        "alert_id": alert_id,
+                        "severity": severity,
+                        "channels": ",".join(channels or ["app"]),
+                        "url": "/citizen/alerts",
+                    },
                     token=token,
                 ),
                 app=app,
