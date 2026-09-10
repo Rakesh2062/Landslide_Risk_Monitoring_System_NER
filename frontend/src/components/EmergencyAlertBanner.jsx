@@ -98,8 +98,10 @@ export default function EmergencyAlertBanner() {
       emergencyNotifier.dispatchEmergencyNotification(currentHazard);
     }
 
-    // 3. A siren sounds only when the authority selected the Siren channel.
-    if (channels.includes('siren') && !isMuted && !emergencyNotifier.hasPlayedSound(currentHazard.alert_id)) {
+    // 3. Every new HIGH / CRITICAL warning must draw attention immediately.
+    // The selected delivery channels still control push/SMS; this in-app
+    // emergency signal covers alerts generated from warning observations too.
+    if (!isMuted && !emergencyNotifier.hasPlayedSound(currentHazard.alert_id)) {
       emergencyAudio.playEmergencySignal();
       emergencyNotifier.markSoundPlayed(currentHazard.alert_id);
     }
@@ -118,7 +120,7 @@ export default function EmergencyAlertBanner() {
       if (channels.includes('app')) {
         emergencyNotifier.dispatchEmergencyNotification(currentHazard);
       }
-      if (channels.includes('siren') && !isMuted) {
+      if (!isMuted) {
         emergencyAudio.playEmergencySignal();
       }
     }

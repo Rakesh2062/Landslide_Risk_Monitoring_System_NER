@@ -1,6 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getPendingReports, clearSyncedReports } from '../db/indexedDb';
-import { syncFieldReports } from '../api/client';
+import { submitFieldReport } from '../api/client';
+
+function dataUrlToBlob(dataUrl) {
+  const [header, encoded] = dataUrl.split(',');
+  const mime = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+function buildQueuedReportFormData(report) {
+  const formData = new FormData();
+  formData.append('lat', String(report.lat));
+  formData.append('lng', String(report.lng));
+  formData.append('description', report.description || '');
+  formData.append('reporter_type', report.reporter_type || 'citizen');
+  formData.append('severity', report.severity || 'medium');
+  formData.append('language', report.language || 'en');
+  formData.append('client_report_id', report.client_report_id);
+  formData.append('timestamp', report.timestamp || new Date().toISOString());
+
+  // IndexedDB can retain a File directly; the data-URL fallback supports
+  // reports created before this change and browsers that cannot retain Files.
+  const photo = report.photo_file instanceof Blob
+    ? report.photo_file
+    : (report.photo_data ? dataUrlToBlob(report.photo_data) : null);
+  if (photo) {
+    formData.append('photo', photo, report.photo_name || 'offline-evidence.jpg');
+  }
+  return formData;
+}
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -28,25 +61,25 @@ export function useOfflineSync() {
         return;
       }
 
-      // Format reports for sync endpoint matching API contract
-      const payload = pending.map((r) => ({
-        client_report_id: r.client_report_id,
-        lat: r.lat,
-        lng: r.lng,
-        description: r.description,
-        photo_preview: r.photo_preview,
-        reporter_type: r.reporter_type,
-        timestamp: r.timestamp,
-      }));
+      const syncedIds = [];
+      for (const report of pending) {
+        try {
+          // Use the normal multipart endpoint so the evidence photo receives
+          // exactly the same server-side storage treatment as an online report.
+          await submitFieldReport(buildQueuedReportFormData(report));
+          syncedIds.push(report.client_report_id);
+        } catch (error) {
+          // Keep failed reports (and their photos) in the queue for retry.
+          console.warn(`Offline report ${report.client_report_id} will be retried:`, error);
+        }
+      }
 
-      const res = await syncFieldReports(payload);
-
-      if (res && res.synced && res.synced.length > 0) {
-        await clearSyncedReports(res.synced);
+      if (syncedIds.length > 0) {
+        await clearSyncedReports(syncedIds);
         await refreshPendingCount();
         setLastSyncResult({
           time: new Date().toLocaleTimeString(),
-          syncedCount: res.synced.length,
+          syncedCount: syncedIds.length,
           status: 'success',
         });
       }

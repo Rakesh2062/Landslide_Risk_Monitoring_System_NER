@@ -131,6 +131,10 @@ export default function ReportForm() {
       severity,
       language: i18n.language || 'en',
       timestamp,
+      // File is structured-cloneable in IndexedDB. The data URL is retained as
+      // a backwards-compatible fallback and for the offline report preview.
+      photo_file: photoFile,
+      photo_name: photoFile?.name || 'offline-evidence.jpg',
       photo_data: photoPreview,
     };
 
