@@ -8,47 +8,45 @@ Built as a single responsive **Progressive Web App (PWA)** usable by district au
 
 ## 🚀 Key Features
 
-1. **Light & Pure-Black Dark Theme**:
-   - Class-based theme system supporting both clean light mode and **true-black dark mode** (`#000000`, `#0a0a0a`, `#121212`) with **strictly zero blue/navy/indigo cast**, as specified.
-   - Dark theme uses high-contrast neutral zinc borders and glowing status accents (emerald, amber, orange, red).
+1. **AI-Powered Landslide Predictor**:
+   - Interactive ML test bench running risk prediction models.
+   - Sliders for 12 geological, topographical, and rainfall features (slope, aspect, elevation, 24h/72h/7d rain, ARI, soil moisture, curvature, drainage distance).
+   - Instant visual gauge calculation and real-time risk classification.
 
-2. **Strict API Contract Conformance**:
-   - 100% compliant with `API_CONTRACT (1).md` across all 14 endpoints and payload shapes.
-   - Unified `src/api/client.js` module wrapping each endpoint with clean named functions.
-   - Environment variable toggle `VITE_USE_MOCKS` enables switching between rich realistic mock data and the live backend server.
+2. **Intelligent AI Chat Assistant**:
+   - Built-in AI chatbot capable of answering queries related to landslide safety, early warnings, emergency procedures, and platform usage.
+   - Provides instant guidance on evacuation protocols and hazard mitigation based on historical and real-time data.
 
-3. **District Authority GIS Dashboard**:
+3. **Advanced Alert & Warning System**:
+   - District authorities can forward critical warnings directly to citizens and field officials.
+   - Integrated SMS gateway for instant mobile text alerts.
+   - App-based siren triggers for immediate attention in high-risk zones.
+   - DEOC network dispatch capabilities for coordinated response.
+
+4. **Real-Time Data & GIS Dashboard**:
    - Interactive GIS map powered by Leaflet & CartoDB Dark Matter / OSM tiles.
-   - Live spatial risk heatmap color-coded by severity (Critical `#ef4444`, High `#ea580c`, Medium `#eab308`, Low `#10b981`).
+   - Live spatial risk heatmap color-coded by severity (Critical, High, Medium, Low).
    - Real-time road connectivity overlay with authority status override (`clear`, `partial`, `blocked`).
-   - Village markers with population and sector metadata.
-   - Click-to-inspect detail drawer with **Recharts 7-day risk trend trajectory**, IMD weather precipitation telemetry (24h, 72h, 7d, ARI index), and soil moisture sensor logs.
-   - Incoming field reports stream with official **Verify** and **Dismiss** triage actions (`PATCH /field-reports/{id}`).
-   - Manual emergency alert broadcast modal dispatching via SMS gateway, App sirens, and DEOC networks.
+   - Live incoming field reports stream with official **Verify** and **Dismiss** triage actions.
 
-4. **Offline-Resilient Field Reporting (PWA)**:
-   - Mobile-first report submission with auto-GPS coordinates detection (`navigator.geolocation`).
-   - Photo capture with instant preview and camera support.
-   - Pre-configured landslide hazard observation tags (cracks, debris flow, boulder blockages, culvert siltation).
-   - **IndexedDB Queueing**: When offline or in low-network mountainous terrain, submissions are safely stored in IndexedDB (`pending_reports`) with client UUIDs.
-   - **Automatic Synchronization**: Background Sync API & `online` event listener automatically flush queued batches via `POST /sync/field-reports` when network connectivity returns.
-   - "My Reports" tab tracking local device submission history and pending queue states.
+5. **Offline-Resilient Field Reporting (PWA)**:
+   - Mobile-first report submission with auto-GPS coordinates detection.
+   - **IndexedDB Queueing**: When offline or in low-network mountainous terrain, submissions are safely stored locally.
+   - **Automatic Synchronization**: Background Sync API flushes queued batches when network connectivity returns.
+   - Photo capture with instant preview and pre-configured landslide hazard observation tags.
 
-5. **Public Community Bulletins**:
+6. **Public Community Bulletins**:
    - Fast, accessible emergency public alerts view requiring no login.
-   - Filtering by Village and Alert Severity.
    - Local emergency disaster helpline directory (DEOC 1077, SDRF Meghalaya, State Police).
-   - Landslide safety directives and evacuation guidelines.
-   - Cached offline availability for emergency access even when disconnected.
-
-6. **Interactive AI Risk Predictor Sandbox**:
-   - Interactive ML test bench running `POST /predict-risk`.
-   - Sliders for all 12 geological, topographical, and rainfall features (slope, aspect, elevation, 24h/72h/7d rain, ARI, soil moisture, curvature, drainage distance).
-   - Instant visual gauge calculation and risk classification.
+   - Landslide safety directives and evacuation guidelines cached for offline availability.
 
 7. **Multilingual Support (i18n)**:
    - Powered by `react-i18next` with language persistence.
    - Supports **English**, **Khasi (Ka Ktien Khasi - Meghalaya)**, and **Assamese (অসমীয়া)**.
+
+8. **Light & Pure-Black Dark Theme**:
+   - Class-based theme system supporting both clean light mode and **true-black dark mode** (`#000000`, `#0a0a0a`).
+   - Dark theme uses high-contrast neutral zinc borders and glowing status accents.
 
 ---
 
