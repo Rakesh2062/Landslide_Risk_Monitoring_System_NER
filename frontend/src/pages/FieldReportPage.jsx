@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import EmergencyAlertBanner from '../components/EmergencyAlertBanner';
+
 
 export default function FieldReportPage() {
   const { t } = useTranslation();
@@ -104,6 +106,7 @@ export default function FieldReportPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      <EmergencyAlertBanner />
       {/* ── Page Header ─────────────────────────────────────────── */}
       <PageHeader
         kicker="Field Operations & Citizen Science"

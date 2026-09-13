@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import AiRiskAssistant from '../admin/AiRiskAssistant';
-import EmergencyAlertBanner from '../EmergencyAlertBanner';
+
 import { listenForForegroundNotifications } from '../../services/firebaseMessaging';
 import { emergencyAudio } from '../../utils/emergencyAudio';
 import { SUPPORTED_LANGUAGES } from '../../i18n/index';
@@ -308,9 +308,6 @@ export default function CitizenLayout() {
             </button>
           </div>
         </header>
-
-        <EmergencyAlertBanner />
-
         {/* Page content via Outlet */}
         <main className="flex-1 w-full max-w-5xl mx-auto px-3 sm:px-5 lg:px-6 py-5 sm:py-6">
           <Outlet />

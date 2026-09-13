@@ -7,6 +7,7 @@ import {
   FileText, MapPin, Send, AlertCircle, CheckCircle2,
   Clock, ChevronDown, ChevronUp, Camera,
 } from 'lucide-react';
+import EmergencyAlertBanner from '../../components/EmergencyAlertBanner';
 
 export default function CitizenReportsPage() {
   const { user } = useAuth();
@@ -67,6 +68,7 @@ export default function CitizenReportsPage() {
 
   return (
     <div className="space-y-5">
+      <EmergencyAlertBanner />
       {/* Page header */}
       <div>
         <div className="flex items-center gap-2 mb-0.5">

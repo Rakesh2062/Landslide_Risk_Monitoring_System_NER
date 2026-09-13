@@ -7,7 +7,7 @@ import TopHeader from './TopHeader';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 import OfflineNotice from '../OfflineNotice';
-import EmergencyAlertBanner from '../EmergencyAlertBanner';
+
 
 import UserVerificationModal from './UserVerificationModal';
 
@@ -90,7 +90,6 @@ export default function AdminLayout() {
         {/* Push content below fixed header (h-16 = 64px) */}
         <div className="flex-1 flex flex-col pt-16">
           <OfflineNotice />
-          <EmergencyAlertBanner />
 
           <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 py-5 sm:py-6">
             <Outlet />
