@@ -83,8 +83,8 @@ export default function MapView({
   const [showVillages, setShowVillages] = useState(true);
   const [showAlerts, setShowAlerts] = useState(true);
 
-  // Base map mode: 'standard' or 'satellite'
-  const [baseMap, setBaseMap] = useState('standard');
+  // Base map mode: 'standard' or 'satellite' (defaults to satellite view first)
+  const [baseMap, setBaseMap] = useState('satellite');
 
   const defaultCenter = [25.32, 91.75]; // East Khasi Hills, Sohra-Shillong corridor
   const activeCenter = center && center[0] && center[1] ? center : defaultCenter;
