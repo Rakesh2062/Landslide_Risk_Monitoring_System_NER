@@ -31,3 +31,19 @@ def soil_moisture(
     db: Session = Depends(get_db),
 ):
     return weather_service.get_soil_moisture(db, zone_id=zone_id)
+
+
+@router.get("/weather/soil-moisture-live")
+def live_soil_moisture(
+    lat: float = Query(..., description="Latitude"),
+    lng: float = Query(..., description="Longitude"),
+):
+    """
+    Fetch real-time volumetric soil moisture (0–1 cm depth) from Open-Meteo.
+    Returns moisture in m³/m³ (0.0–1.0), suitable for the ML model's soil_moisture feature.
+    """
+    result = weather_service.get_live_soil_moisture(lat, lng)
+    if result is None:
+        raise HTTPException(status_code=503, detail="Live soil moisture data unavailable")
+    return result
+

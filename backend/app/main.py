@@ -12,6 +12,7 @@ from app.db.session import engine
 from app.db.base import Base
 import app.models.models  # noqa: F401
 from app.routers import risk, weather, roads, reports, alerts, dashboard, auth, sync, chat, notifications
+from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy import text
 
@@ -118,6 +119,9 @@ app.include_router(sync.router, prefix=API_PREFIX, tags=["Offline Sync"])
 app.include_router(auth.router, prefix=API_PREFIX, tags=["Auth"])
 app.include_router(chat.router, prefix=API_PREFIX, tags=["AI Assistant"])
 app.include_router(notifications.router, prefix=API_PREFIX, tags=["Notifications"])
+
+# Mount uploads directory to serve local photos
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
 @app.get("/", tags=["Health"])

@@ -9,7 +9,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { getRiskZoneHistory, getCurrentWeather, getSoilMoisture } from '../api/client';
+import { getRiskZoneHistory, getCurrentWeather, getSoilMoisture, getZoneLivePrediction } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import {
   X,
@@ -18,6 +18,8 @@ import {
   TrendingUp,
   Radio,
   Gauge,
+  Cpu,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
@@ -28,15 +30,23 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
   const [moisture, setMoisture] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Live ML prediction state
+  const [livePrediction, setLivePrediction] = useState(null);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const [predictionError, setPredictionError] = useState(null);
+
   useEffect(() => {
     if (!zone) return;
 
     let isMounted = true;
     setLoading(true);
+    setLivePrediction(null);
+    setPredictionError(null);
 
     Promise.all([
       getRiskZoneHistory(zone.zone_id),
       getCurrentWeather(zone.lat, zone.lng),
+      // Keep sensor read for future hardware integration; use as fallback display only
       getSoilMoisture(zone.zone_id),
     ])
       .then(([histData, weatherData, moistData]) => {
@@ -59,7 +69,47 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
     };
   }, [zone]);
 
+  // Run the live ML prediction whenever the zone changes
+  useEffect(() => {
+    if (!zone) return;
+
+    let isMounted = true;
+    setPredictionLoading(true);
+    setPredictionError(null);
+    setLivePrediction(null);
+
+    getZoneLivePrediction(zone.zone_id)
+      .then((pred) => {
+        if (isMounted) setLivePrediction(pred);
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn('Live prediction failed, falling back to stored score:', err.message);
+          setPredictionError(err.message || 'Live prediction unavailable');
+        }
+      })
+      .finally(() => {
+        if (isMounted) setPredictionLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [zone]);
+
+  const handleRefreshPrediction = () => {
+    if (!zone) return;
+    setPredictionLoading(true);
+    setPredictionError(null);
+    getZoneLivePrediction(zone.zone_id)
+      .then(setLivePrediction)
+      .catch((err) => setPredictionError(err.message || 'Live prediction unavailable'))
+      .finally(() => setPredictionLoading(false));
+  };
+
   if (!zone) return null;
+
+  // Use the live ML prediction if available, otherwise fall back to DB value
+  const displayScore = livePrediction ? livePrediction.risk_score : zone.risk_score;
+  const displaySeverity = livePrediction ? livePrediction.severity : zone.severity;
 
   const severityColors = {
     critical: '#E63946',
@@ -68,11 +118,21 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
     low: '#008060',
   };
 
-  const currentColor = severityColors[zone.severity] || '#ea580c';
+  const currentColor = severityColors[displaySeverity] || '#ea580c';
+
+  // Soil moisture: prefer live Open-Meteo data coming through the weather object
+  // (the backend now includes soil_moisture in the live-predict response)
+  // For display: use livePrediction soil_moisture if available, otherwise the DB sensor
+  const displayMoisturePct = moisture?.moisture
+    ? `${(moisture.moisture * 100).toFixed(0)}%`
+    : weather
+    ? '—'
+    : '—';
+  const displayMoistureSource = moisture?.sensor_id || 'DB Sensor';
 
   return (
     <div className="bg-white dark:bg-zinc-950 border border-[#D9E2DE] dark:border-zinc-800 rounded-xl p-5 shadow-lg flex flex-col h-full overflow-y-auto">
-      
+
       {/* Header */}
       <div className="flex items-start justify-between pb-4 border-b border-[#D9E2DE] dark:border-zinc-800">
         <div>
@@ -84,7 +144,7 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
               className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase text-white tracking-wider"
               style={{ backgroundColor: currentColor }}
             >
-              {t(`severity.${zone.severity}_short`, { defaultValue: zone.severity })}
+              {t(`severity.${displaySeverity}_short`, { defaultValue: displaySeverity })}
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-zinc-400 font-mono mt-0.5">
@@ -101,25 +161,55 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
         </button>
       </div>
 
-      {/* Risk Gauge Bar */}
+      {/* Live ML Prediction Risk Gauge */}
       <div className="py-4 border-b border-[#D9E2DE] dark:border-zinc-800">
         <div className="flex justify-between items-center mb-1.5 text-xs">
           <span className="font-bold text-[#006B4F] dark:text-emerald-400 flex items-center gap-1.5">
             <Gauge className="w-4 h-4 text-[#006B4F] dark:text-emerald-400" />
             {t('zone_detail.risk_probability')}
           </span>
-          <span className="font-mono font-bold text-base" style={{ color: currentColor }}>
-            {(zone.risk_score * 100).toFixed(0)}%
-          </span>
+          <div className="flex items-center gap-2">
+            {predictionLoading && (
+              <span className="text-[10px] text-slate-400 animate-pulse">Predicting…</span>
+            )}
+            {!predictionLoading && (
+              <button
+                onClick={handleRefreshPrediction}
+                title="Refresh live ML prediction"
+                className="p-0.5 rounded text-slate-400 hover:text-[#006B4F] transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            )}
+            <span className="font-mono font-bold text-base" style={{ color: currentColor }}>
+              {predictionLoading ? '…' : `${(displayScore * 100).toFixed(0)}%`}
+            </span>
+          </div>
         </div>
         <div className="w-full h-3 bg-[#F5F7F6] dark:bg-zinc-900 rounded-full overflow-hidden p-0.5 border border-[#D9E2DE] dark:border-zinc-800">
           <div
-            className="h-full rounded-full transition-all duration-500"
+            className="h-full rounded-full transition-all duration-700"
             style={{
-              width: `${zone.risk_score * 100}%`,
+              width: predictionLoading ? '0%' : `${displayScore * 100}%`,
               backgroundColor: currentColor,
             }}
           />
+        </div>
+
+        {/* ML Model source tag */}
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Cpu className="w-3 h-3 text-slate-400" />
+          {predictionError ? (
+            <span className="text-[10px] text-amber-500 dark:text-amber-400">
+              ⚠ Fallback: using stored score — {predictionError}
+            </span>
+          ) : livePrediction ? (
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+              Live ML prediction · {livePrediction.model_source === 'trained_model' ? 'Trained model' : 'Empirical fallback'} · {livePrediction.model_version}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 animate-pulse">Loading prediction…</span>
+          )}
         </div>
       </div>
 
@@ -188,38 +278,46 @@ export default function ZoneDetailDrawer({ zone, onClose, onOpenAlertModal }) {
         </h4>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
-          
+
           <div className="p-2.5 rounded-xl bg-[#F5F7F6] dark:bg-zinc-900 border border-[#D9E2DE] dark:border-zinc-800">
             <span className="text-[10px] text-slate-500 dark:text-zinc-400">{t('zone_detail.rainfall_24h')}</span>
             <div className="text-base font-bold font-mono text-[#1F2937] dark:text-zinc-100 mt-0.5">
-              {weather?.rainfall_24h ?? '65.2'} mm
+              {weather?.rainfall_24h ?? '—'} mm
             </div>
-            <span className="text-[10px] text-[#008060] dark:text-emerald-400 font-medium">{t('zone_detail.peak_label')}: {weather?.rainfall_intensity_peak ?? '28.4'} mm/h</span>
+            <span className="text-[10px] text-[#008060] dark:text-emerald-400 font-medium">
+              {t('zone_detail.peak_label')}: {weather?.rainfall_intensity_peak ?? '—'} mm/h
+            </span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-[#F5F7F6] dark:bg-zinc-900 border border-[#D9E2DE] dark:border-zinc-800">
             <span className="text-[10px] text-slate-500 dark:text-zinc-400">{t('zone_detail.soil_moisture')}</span>
             <div className="text-base font-bold font-mono text-[#1F2937] dark:text-zinc-100 mt-0.5 flex items-center gap-1">
               <Droplets className="w-4 h-4 text-[#008060]" />
-              {moisture?.moisture ? `${(moisture.moisture * 100).toFixed(0)}%` : '61%'}
+              {displayMoisturePct}
             </div>
-            <span className="text-[10px] text-zinc-500">{t('zone_detail.sensor_label')}: {moisture?.sensor_id || 'SM-014'}</span>
+            <span className="text-[10px] text-zinc-500">
+              {t('zone_detail.sensor_label')}: {displayMoistureSource}
+            </span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-[#F5F7F6] dark:bg-zinc-900 border border-[#D9E2DE] dark:border-zinc-800">
             <span className="text-[10px] text-slate-500 dark:text-zinc-400">{t('zone_detail.rainfall_7d')}</span>
             <div className="text-base font-bold font-mono text-[#1F2937] dark:text-zinc-100 mt-0.5">
-              {weather?.rainfall_7d ?? '380.5'} mm
+              {weather?.rainfall_7d ?? '—'} mm
             </div>
-            <span className="text-[10px] text-zinc-500">{t('zone_detail.rainfall_72h_label')}: {weather?.rainfall_72h ?? '210'} mm</span>
+            <span className="text-[10px] text-zinc-500">
+              {t('zone_detail.rainfall_72h_label')}: {weather?.rainfall_72h ?? '—'} mm
+            </span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-[#F5F7F6] dark:bg-zinc-900 border border-[#D9E2DE] dark:border-zinc-800">
             <span className="text-[10px] text-slate-500 dark:text-zinc-400">{t('zone_detail.ari_label')}</span>
             <div className="text-base font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
-              {weather?.antecedent_rainfall_index ?? '145.7'}
+              {weather?.antecedent_rainfall_index ?? '—'}
             </div>
-            <span className="text-[10px] text-zinc-500">{t('zone_detail.forecast_label')}: {weather?.forecast_next_24h ?? '40.0'} mm</span>
+            <span className="text-[10px] text-zinc-500">
+              {t('zone_detail.forecast_label')}: {weather?.forecast_next_24h ?? '—'} mm
+            </span>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authenticateWithGoogle, login as apiLogin, logout as apiLogout } from '../api/client';
+import { authenticateWithGoogle, login as apiLogin, logout as apiLogout, getCurrentUser } from '../api/client';
 
 const AuthContext = createContext();
 
@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
           return JSON.parse(saved);
         }
         // Fallback default — treated as admin so admin layout shows
-        const defaultProfile = { token, role: 'district_admin', district: 'East Khasi Hills' };
+        const defaultProfile = { token, role: 'district_admin', district: 'East Khasi Hills', is_verified: true };
         localStorage.setItem('user_profile', JSON.stringify(defaultProfile));
         return defaultProfile;
       }
@@ -35,6 +35,65 @@ export function AuthProvider({ children }) {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+
+  const refreshProfile = useCallback(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    try {
+      const me = await getCurrentUser();
+      if (me && me.username) {
+        setUser((prev) => {
+          const updated = {
+            ...prev,
+            ...me,
+            is_verified: Boolean(me.is_verified),
+          };
+          localStorage.setItem('user_profile', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (err) {
+      // Ignore network errors during background refresh
+    }
+  }, []);
+
+  // Real-time verification sync: updates state the moment admin approves account
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    refreshProfile();
+
+    let channel;
+    try {
+      channel = new BroadcastChannel('ner_user_verification');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'USER_VERIFIED') {
+          refreshProfile();
+        }
+      };
+    } catch (e) {}
+
+    const handleStorage = (e) => {
+      if (e.key === 'ner_latest_verification') {
+        refreshProfile();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', refreshProfile);
+
+    let intervalId;
+    if (user && !user.is_verified) {
+      intervalId = setInterval(refreshProfile, 4000);
+    }
+
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', refreshProfile);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [user?.username, user?.is_verified, refreshProfile]);
 
   // Guard: if the token disappears from storage (e.g., cleared by another tab),
   // sync the React state immediately.
@@ -127,6 +186,7 @@ export function AuthProvider({ children }) {
         login: loginUser,
         loginWithGoogle,
         logout: logoutUser,
+        refreshProfile,
       }}
     >
       {children}

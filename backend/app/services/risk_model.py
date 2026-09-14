@@ -172,7 +172,6 @@ if __name__ == "__main__":
     sample = {
         "slope": 15.0,
         "aspect": 180.0,
-        "elevation": 800.0,
         "curvature": -0.002,
         "dist_to_drainage": 120.0,
         "rainfall_24h": 45.0,

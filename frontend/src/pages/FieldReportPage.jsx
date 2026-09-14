@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getFieldReports, updateFieldReportStatus, deleteFieldReport } from '../api/client';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useOfflineSync, SYNC_CHANNEL } from '../hooks/useOfflineSync';
 import ReportForm from '../components/ReportForm';
 import PageHeader from '../components/admin/PageHeader';
 import SectionCard from '../components/admin/SectionCard';
@@ -26,8 +26,6 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
-import EmergencyAlertBanner from '../components/EmergencyAlertBanner';
-
 
 export default function FieldReportPage() {
   const { t } = useTranslation();
@@ -53,6 +51,21 @@ export default function FieldReportPage() {
 
   useEffect(() => {
     loadReports();
+
+    // Auto-refresh feed when offline reports are synced from the queue
+    let syncChannel;
+    try {
+      syncChannel = new BroadcastChannel(SYNC_CHANNEL);
+      syncChannel.onmessage = (e) => {
+        if (e.data?.type === 'SYNC_COMPLETE') {
+          loadReports();
+        }
+      };
+    } catch (_) { /* not supported */ }
+
+    return () => {
+      try { syncChannel?.close(); } catch (_) { }
+    };
   }, []);
 
   const handleUpdateStatus = async (reportId, newStatus) => {
@@ -106,7 +119,6 @@ export default function FieldReportPage() {
 
   return (
     <div className="space-y-6 pb-16">
-      <EmergencyAlertBanner />
       {/* ── Page Header ─────────────────────────────────────────── */}
       <PageHeader
         kicker="Field Operations & Citizen Science"

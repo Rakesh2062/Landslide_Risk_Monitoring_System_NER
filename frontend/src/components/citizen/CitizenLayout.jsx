@@ -208,7 +208,9 @@ export default function CitizenLayout() {
                     : 'Overview'}
                 </strong>
               </div>
-              <span className="text-[10px] text-[#006B4F] dark:text-emerald-400 font-semibold">Verified Resident View</span>
+              <span className={`text-[10px] font-semibold ${user?.is_verified ? 'text-[#006B4F] dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {user?.is_verified ? 'Verified Resident View' : 'Pending Verification View'}
+              </span>
             </div>
           </div>
 
@@ -287,15 +289,21 @@ export default function CitizenLayout() {
 
             {/* User pill */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#F5F7F6] dark:bg-[#141418] border border-[#D9E2DE] dark:border-[#27272A]">
-              <div className="w-5 h-5 rounded-full bg-[#006B4F] flex items-center justify-center text-white text-[9px] font-bold shrink-0">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 ${user?.is_verified ? 'bg-[#006B4F]' : 'bg-amber-600'}`}>
                 {user?.username ? user.username[0].toUpperCase() : 'C'}
               </div>
               <span className="text-[11px] font-semibold text-slate-700 dark:text-zinc-200 truncate max-w-[100px]">
                 {user?.username || 'Citizen'}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#EAF5F0] dark:bg-emerald-950/40 text-[#006B4F] dark:text-emerald-400 font-bold border border-[#006B4F]/20">
-                Verified
-              </span>
+              {user?.is_verified ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#EAF5F0] dark:bg-emerald-950/40 text-[#006B4F] dark:text-emerald-400 font-bold border border-[#006B4F]/20">
+                  Verified
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-bold border border-amber-300 dark:border-amber-800/40">
+                  Pending Verification
+                </span>
+              )}
             </div>
 
             {/* Logout */}

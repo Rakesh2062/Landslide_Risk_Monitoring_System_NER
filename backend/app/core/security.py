@@ -51,6 +51,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_
     return decode_token(credentials.credentials)
 
 
+def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))) -> Optional[dict]:
+    if not credentials:
+        return None
+    try:
+        return decode_token(credentials.credentials)
+    except Exception:
+        return None
+
+
 def require_official(current_user: dict = Depends(get_current_user)) -> dict:
     role = current_user.get("role")
     if role not in ("district_admin", "field_official"):

@@ -24,7 +24,6 @@ export default function PredictorPage() {
   const defaultFeatures = {
     slope: 34.5,
     aspect: 182.3,
-    elevation: 1420,
     curvature: -0.42,
     dist_to_drainage: 310.0,
     rainfall_24h: 65.2,
@@ -85,7 +84,6 @@ export default function PredictorPage() {
       group: 'Geomorphology & Terrain',
       items: [
         { key: 'slope', label: 'Slope Gradient Angle', min: 5, max: 75, step: 0.5, unit: '°', desc: 'Gravitational shear driving force' },
-        { key: 'elevation', label: 'Elevation Above Sea Level', min: 200, max: 2200, step: 10, unit: ' m', desc: 'Orographic lift zone' },
         { key: 'curvature', label: 'Terrain Curvature', min: -2, max: 2, step: 0.05, unit: '', desc: 'Negative = concave water convergence' },
         { key: 'dist_to_drainage', label: 'Distance to Natural Drainage', min: 10, max: 1000, step: 10, unit: ' m', desc: 'Gully toe erosion proximity' },
         { key: 'dist_to_history', label: 'Distance to Historical Landslide', min: 0, max: 10, step: 0.1, unit: ' km', desc: 'Proximity to past failure zones' },

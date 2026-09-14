@@ -39,6 +39,12 @@ export default function UserVerificationModal({ isOpen, onClose }) {
       if (previewUser?.id === userId) {
         setPreviewUser(null);
       }
+      try {
+        const channel = new BroadcastChannel('ner_user_verification');
+        channel.postMessage({ type: 'USER_VERIFIED', userId });
+        channel.close();
+      } catch (e) {}
+      localStorage.setItem('ner_latest_verification', Date.now().toString());
       setTimeout(() => setMessage(null), 3000);
     } catch (err) {
       alert(err.message || 'Failed to verify user');
