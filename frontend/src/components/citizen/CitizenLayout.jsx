@@ -6,8 +6,7 @@ import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useUnreadBadge } from '../../context/UnreadBadgeContext';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '../../i18n';
-import OfflineNotice from '../OfflineNotice';
-import EmergencyAlertBanner from '../EmergencyAlertBanner';
+
 import { emergencyAudio } from '../../utils/emergencyAudio';
 import { listenForForegroundNotifications } from '../../services/firebaseMessaging';
 import {
@@ -300,9 +299,6 @@ export default function CitizenLayout() {
           </div>
         </header>
 
-        {/* Banners + Page content */}
-        <OfflineNotice />
-        <EmergencyAlertBanner />
 
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <Outlet />
