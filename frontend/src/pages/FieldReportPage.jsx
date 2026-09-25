@@ -51,21 +51,11 @@ export default function FieldReportPage() {
 
   useEffect(() => {
     loadReports();
-
-    // Auto-refresh feed when offline reports are synced from the queue
-    let syncChannel;
-    try {
-      syncChannel = new BroadcastChannel(SYNC_CHANNEL);
-      syncChannel.onmessage = (e) => {
-        if (e.data?.type === 'SYNC_COMPLETE') {
-          loadReports();
-        }
-      };
-    } catch (_) { /* not supported */ }
-
-    return () => {
-      try { syncChannel?.close(); } catch (_) { }
+    const handleSync = () => {
+      loadReports();
     };
+    window.addEventListener('reports-synced', handleSync);
+    return () => window.removeEventListener('reports-synced', handleSync);
   }, []);
 
   const handleUpdateStatus = async (reportId, newStatus) => {

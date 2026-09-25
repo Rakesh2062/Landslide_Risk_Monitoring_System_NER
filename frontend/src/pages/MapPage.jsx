@@ -4,10 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { getRiskZones, getRoads, getVillages, getAlerts, updateRoadStatus } from '../api/client';
 import MapView from '../components/MapView';
 import ZoneDetailDrawer from '../components/ZoneDetailDrawer';
+import RealTimeRiskPanel from '../components/RealTimeRiskPanel';
+import PopulationImpactSection from '../components/PopulationImpactSection';
 import CreateAlertModal from '../components/CreateAlertModal';
 import PageHeader from '../components/admin/PageHeader';
 import RiskBadge from '../components/admin/RiskBadge';
-import { Map, Search, ChevronRight, Filter, Radio, RefreshCw } from 'lucide-react';
+import { Map, Search, ChevronRight, Filter, Radio, RefreshCw, Activity, Layers, Users } from 'lucide-react';
 
 export default function MapPage() {
   const { t } = useTranslation();
@@ -22,6 +24,10 @@ export default function MapPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [mapCenter, setMapCenter] = useState(null);
+
+  // Active right sidebar mode: 'realtime' | 'grid'
+  const [sidebarMode, setSidebarMode] = useState('realtime');
+  const [isRealTimeMapActive, setIsRealTimeMapActive] = useState(true);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -73,6 +79,13 @@ export default function MapPage() {
     setRoads(updated || []);
   };
 
+  const handleSelectZoneAndCenter = (zone) => {
+    setSelectedZone(zone);
+    if (zone && zone.lat && zone.lng) {
+      setMapCenter([zone.lat, zone.lng]);
+    }
+  };
+
   const filteredZones = zones.filter((z) => {
     const matchesSeverity =
       filterSeverity === 'all' || (z.severity || '').toLowerCase() === filterSeverity;
@@ -83,12 +96,12 @@ export default function MapPage() {
   });
 
   return (
-    <div className="space-y-5 pb-12">
+    <div className="space-y-6 pb-16">
       {/* ── Page Header ─────────────────────────────────────────── */}
       <PageHeader
         kicker="Geospatial Intelligence Portal"
         title="East Khasi Hills GIS Hazard Map"
-        description="Spatial surveillance of geocells, arterial road pass conditions, and settlement proximity across the Meghalaya plateau."
+        description="Spatial surveillance of geocells, real-time risk telemetry, continuous hazard heatmaps, arterial road corridors, and demographic vulnerability across the Meghalaya plateau."
         badge={`${filteredZones.length} Monitored Cells`}
         actions={
           <>
@@ -134,22 +147,50 @@ export default function MapPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400">
-            Severity:
-          </span>
-          <select
-            value={filterSeverity}
-            onChange={(e) => setFilterSeverity(e.target.value)}
-            className="px-3 py-1.5 rounded-lg bg-[#F5F7F6] dark:bg-[#141418] border border-[#D9E2DE] dark:border-[#27272A] text-xs text-slate-800 dark:text-zinc-200 font-medium focus:outline-none focus:border-[#006B4F]"
-          >
-            <option value="all">All Severities ({zones.length})</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
+        <div className="flex items-center gap-3">
+          {/* Right Panel View Mode Tabs */}
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F5F7F6] dark:bg-[#141418] border border-[#D9E2DE] dark:border-[#27272A] text-xs font-semibold">
+            <button
+              onClick={() => {
+                setSidebarMode('realtime');
+                setIsRealTimeMapActive(true);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+                sidebarMode === 'realtime'
+                  ? 'bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+              <span>Real-Time Stream</span>
+            </button>
+            <button
+              onClick={() => setSidebarMode('grid')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+                sidebarMode === 'grid'
+                  ? 'bg-white dark:bg-zinc-800 text-[#006B4F] dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Grid Cells ({filteredZones.length})</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <select
+              value={filterSeverity}
+              onChange={(e) => setFilterSeverity(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-[#F5F7F6] dark:bg-[#141418] border border-[#D9E2DE] dark:border-[#27272A] text-xs text-slate-800 dark:text-zinc-200 font-medium focus:outline-none focus:border-[#006B4F]"
+            >
+              <option value="all">All Severities ({zones.length})</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -163,19 +204,31 @@ export default function MapPage() {
             villages={villages}
             alerts={alerts}
             selectedZoneId={selectedZone?.zone_id}
-            onSelectZone={(z) => setSelectedZone(z)}
+            onSelectZone={handleSelectZoneAndCenter}
             onUpdateRoadStatus={handleUpdateRoadStatus}
-            height="660px"
+            height="680px"
             center={mapCenter}
+            showRealTime={isRealTimeMapActive}
+            onToggleRealTime={(active) => {
+              setIsRealTimeMapActive(active);
+              if (active) setSidebarMode('realtime');
+            }}
           />
         </div>
 
-        {/* Side Inspection Panel */}
-        <div className="lg:col-span-1 h-[660px] flex flex-col">
+        {/* Side Inspection Panel (Real-Time Risk Intelligence / Grid Cells / Detail Drawer) */}
+        <div className="lg:col-span-1 h-[680px] flex flex-col">
           {selectedZone ? (
             <ZoneDetailDrawer
               zone={selectedZone}
               onClose={() => setSelectedZone(null)}
+              onOpenAlertModal={() => setIsAlertModalOpen(true)}
+            />
+          ) : sidebarMode === 'realtime' ? (
+            <RealTimeRiskPanel
+              zones={filteredZones}
+              selectedZoneId={selectedZone?.zone_id}
+              onSelectZone={handleSelectZoneAndCenter}
               onOpenAlertModal={() => setIsAlertModalOpen(true)}
             />
           ) : (
@@ -192,7 +245,7 @@ export default function MapPage() {
                 </p>
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                 {filteredZones.length === 0 ? (
                   <div className="p-8 text-center text-xs text-slate-400">
                     No matching zones found.
@@ -201,7 +254,7 @@ export default function MapPage() {
                   filteredZones.map((z) => (
                     <div
                       key={z.zone_id}
-                      onClick={() => setSelectedZone(z)}
+                      onClick={() => handleSelectZoneAndCenter(z)}
                       className="p-3 rounded-lg bg-[#F5F7F6]/70 dark:bg-[#141418] border border-[#D9E2DE] dark:border-[#27272A] hover:border-[#006B4F] dark:hover:border-emerald-500/50 cursor-pointer transition-all flex items-center justify-between group"
                     >
                       <div className="min-w-0">
@@ -212,7 +265,7 @@ export default function MapPage() {
                           <RiskBadge severity={z.severity} size="xs" />
                         </div>
                         <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono">
-                          {z.zone_id} • Score: {z.risk_score}
+                          {z.zone_id} • Score: {(z.risk_score || 0).toFixed(2)}
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#006B4F] dark:group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
@@ -224,6 +277,14 @@ export default function MapPage() {
           )}
         </div>
       </div>
+
+      {/* ── Section Under the Map: Demographic Exposure & Affected Population Analytics ── */}
+      <PopulationImpactSection
+        zones={filteredZones}
+        villages={villages}
+        onSelectZone={handleSelectZoneAndCenter}
+        onOpenAlertModal={() => setIsAlertModalOpen(true)}
+      />
 
       {/* Alert creation modal */}
       <CreateAlertModal

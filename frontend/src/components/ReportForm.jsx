@@ -17,12 +17,13 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-export default function ReportForm() {
+export default function ReportForm({ audience = 'official', onReportSubmitted }) {
   const { t, i18n } = useTranslation();
   const { isOnline, refreshPendingCount } = useOfflineSync();
+  const isCitizen = audience === 'citizen';
 
   const [description, setDescription] = useState('');
-  const [reporterType, setReporterType] = useState('official');
+  const [reporterType, setReporterType] = useState(isCitizen ? 'citizen' : 'official');
   const [severity, setSeverity] = useState('medium');
   const [lat, setLat] = useState('25.2840');
   const [lng, setLng] = useState('91.7325');
@@ -63,20 +64,13 @@ export default function ReportForm() {
 
   useEffect(() => {
     loadReportsHistory();
-
-    let syncChannel;
-    try {
-      syncChannel = new BroadcastChannel(SYNC_CHANNEL);
-      syncChannel.onmessage = (e) => {
-        if (e.data?.type === 'SYNC_COMPLETE') {
-          loadReportsHistory();
-        }
-      };
-    } catch (_) { /* not supported */ }
-    return () => {
-      try { syncChannel?.close(); } catch (_) { }
+    const handleSync = () => {
+      loadReportsHistory();
+      refreshPendingCount?.();
     };
-  }, []);
+    window.addEventListener('reports-synced', handleSync);
+    return () => window.removeEventListener('reports-synced', handleSync);
+  }, [refreshPendingCount]);
 
   // Geolocation auto-detection
   const detectLocation = () => {
@@ -199,6 +193,7 @@ export default function ReportForm() {
         timestamp,
       });
       localStorage.setItem('my_local_reports', JSON.stringify(savedHistory));
+      onReportSubmitted?.();
 
       setSubmissionFeedback({
         type: 'success',
@@ -307,15 +302,15 @@ export default function ReportForm() {
               <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
-                  onClick={() => setReporterType('official')}
+                  onClick={() => setReporterType(isCitizen ? 'citizen' : 'official')}
                   className={`py-2.5 px-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all ${
-                    reporterType === 'official'
+                    reporterType === (isCitizen ? 'citizen' : 'official')
                       ? 'bg-[#008060] text-white border-[#008060] shadow-sm'
                       : 'bg-slate-50 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-[#D9E2DE] dark:border-zinc-800'
                   }`}
                 >
                   <Shield className="w-4 h-4" />
-                  <span>{t('report_form.official')}</span>
+                  <span>{isCitizen ? 'Community Reporter' : t('report_form.official')}</span>
                 </button>
               </div>
             </div>
@@ -323,7 +318,7 @@ export default function ReportForm() {
             {/* Severity Level Selection */}
             <div>
               <label className="block font-semibold text-[#1F2937] dark:text-zinc-300 mb-1.5">
-                Reported Severity Level <span className="text-[#E63946]">*</span>
+                {isCitizen ? 'Observed Severity Level' : 'Reported Severity Level'} <span className="text-[#E63946]">*</span>
               </label>
               <div className="grid grid-cols-4 gap-2">
                 {[

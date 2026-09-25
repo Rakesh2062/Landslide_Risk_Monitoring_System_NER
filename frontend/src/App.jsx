@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { UnreadBadgeProvider } from './context/UnreadBadgeContext';
 import AdminLayout from './components/admin/AdminLayout';
 import CitizenLayout from './components/citizen/CitizenLayout';
 
@@ -61,50 +62,52 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         {/*
-          IMPORTANT: AuthProvider must be INSIDE <Router> because
-          it uses useNavigate() for redirect-on-logout.
+          IMPORTANT: AuthProvider and UnreadBadgeProvider must be INSIDE <Router>
+          because they consume routing hooks.
         */}
         <Router>
           <AuthProvider>
-            <Routes>
-              {/* ── Public routes ─────────────────────────────────────── */}
-              <Route path="/"         element={<LandingPage />} />
-              <Route path="/login"    element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
+            <UnreadBadgeProvider>
+              <Routes>
+                {/* ── Public routes ─────────────────────────────────────── */}
+                <Route path="/"         element={<LandingPage />} />
+                <Route path="/login"    element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-              {/* ── Citizen Portal — sidebar layout with nested pages ─── */}
-              <Route
-                element={
-                  <CitizenRoute>
-                    <CitizenLayout />
-                  </CitizenRoute>
-                }
-              >
-                <Route path="/citizen"         element={<CitizenDashboard />} />
-                <Route path="/citizen/map"     element={<CitizenMapPage />} />
-                <Route path="/citizen/weather" element={<WeatherSensorsPage />} />
-                <Route path="/citizen/reports" element={<CitizenReportsPage />} />
-                <Route path="/citizen/alerts"  element={<CitizenAlertsPage />} />
-              </Route>
+                {/* ── Citizen Portal — sidebar layout with nested pages ─── */}
+                <Route
+                  element={
+                    <CitizenRoute>
+                      <CitizenLayout />
+                    </CitizenRoute>
+                  }
+                >
+                  <Route path="/citizen"         element={<CitizenDashboard />} />
+                  <Route path="/citizen/map"     element={<CitizenMapPage />} />
+                  <Route path="/citizen/weather" element={<WeatherSensorsPage />} />
+                  <Route path="/citizen/reports" element={<CitizenReportsPage />} />
+                  <Route path="/citizen/alerts"  element={<CitizenAlertsPage />} />
+                </Route>
 
-              {/* ── Protected Admin Portal routes (wrapped in AdminLayout) ── */}
-              <Route
-                element={
-                  <AdminRoute>
-                    <AdminLayout />
-                  </AdminRoute>
-                }
-              >
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/map"       element={<MapPage />} />
-                <Route path="/report"    element={<FieldReportPage />} />
-                <Route path="/alerts"    element={<PublicAlertsPage />} />
-                <Route path="/predict"   element={<PredictorPage />} />
-              </Route>
+                {/* ── Protected Admin Portal routes (wrapped in AdminLayout) ── */}
+                <Route
+                  element={
+                    <AdminRoute>
+                      <AdminLayout />
+                    </AdminRoute>
+                  }
+                >
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/map"       element={<MapPage />} />
+                  <Route path="/report"    element={<FieldReportPage />} />
+                  <Route path="/alerts"    element={<PublicAlertsPage />} />
+                  <Route path="/predict"   element={<PredictorPage />} />
+                </Route>
 
-              {/* ── Catch-all: redirect unknown URLs to landing page ─── */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                {/* ── Catch-all: redirect unknown URLs to landing page ─── */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </UnreadBadgeProvider>
           </AuthProvider>
         </Router>
       </ThemeProvider>
