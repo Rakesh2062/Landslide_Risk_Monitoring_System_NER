@@ -89,27 +89,28 @@ export function useOfflineSync() {
   const triggerSync = useCallback(async () => {
     if (isSyncingRef.current) return;
 
-    try {
-      setIsSyncing(true);
-      const pending = await getPendingReports();
-      if (!pending || pending.length === 0) {
-        setPendingCount(0);
-        setIsSyncing(false);
-        return;
-      }
-
-    const pending = await getPendingReports();
-    if (pending.length === 0) return; // nothing to do
-
     isSyncingRef.current = true;
     setIsSyncing(true);
 
     try {
+      const reachable = await pingServer();
+      if (!reachable) {
+        setIsOnline(false);
+        return;
+      }
+
+      setIsOnline(true);
+      const pending = await getPendingReports();
+      if (!pending?.length) {
+        setPendingCount(0);
+        return;
+      }
+
+      setPendingCount(pending.length);
       const syncedIds = [];
       for (const report of pending) {
         try {
-          // Send multipart formData to match standard report submission
-          const res = await submitFieldReport(buildQueuedReportFormData(report));
+          const res = await submitFieldReport(buildFormData(report));
           syncedIds.push(report.client_report_id);
 
           // Update local submission history so it transitions from pending_sync to received
@@ -166,6 +167,12 @@ export function useOfflineSync() {
             detail: { syncedCount: syncedIds.length, syncedIds },
           })
         );
+        try {
+          const channel = new BroadcastChannel(SYNC_CHANNEL);
+          channel.postMessage({ type: 'SYNC_COMPLETE', syncedCount: syncedIds.length });
+          channel.close();
+        } catch {
+        }
       }
     } catch (err) {
       console.error('Offline automatic sync failed:', err);
@@ -182,50 +189,28 @@ export function useOfflineSync() {
 
   // ── Heartbeat + startup sync ─────────────────────────────────────────────────
   useEffect(() => {
-    // Initial check and auto-sync if already online
-    refreshPendingCount().then((count) => {
-      if (count > 0 && navigator.onLine) {
-        triggerSync();
-      }
-    });
+    let active = true;
+    const checkConnection = async () => {
+      const reachable = await pingServer();
+      if (!active) return;
 
       setIsOnline(reachable);
-
       if (reachable) {
-        // KEY FIX: on startup OR when coming back online, check for pending and sync
         const count = await refreshPendingCount();
-        if (count > 0) {
-          console.log(`[OfflineSync] Online with ${count} pending report(s) — syncing…`);
-          triggerSync();
-        }
+        if (active && count > 0) triggerSync();
       }
     };
 
-    // Run immediately on mount — this catches the case where the user is already
-    // online and has reports queued from a previous offline session
-    check(true);
+    checkConnection();
+    const intervalId = setInterval(checkConnection, PING_INTERVAL_MS);
 
-    const interval = setInterval(() => check(false), PING_INTERVAL_MS);
-
-    // Fast-path: native browser events (may not fire in dev but help in prod)
-    const handleOnline = () => check(false);
+    const handleOnline = () => checkConnection();
     const handleOffline = () => {
-      if (active) setIsOnline(false);
+      setIsOnline(false);
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic check to automatically flush pending offline reports as soon as network is live
-    const intervalId = setInterval(async () => {
-      if (navigator.onLine && !isSyncing) {
-        const count = await refreshPendingCount();
-        if (count > 0) {
-          triggerSync();
-        }
-      }
-    }, 3000);
-
-    // Register ServiceWorker background sync if supported
     if ('serviceWorker' in navigator && 'SyncManager' in window) {
       navigator.serviceWorker.ready
         .then((registration) => {
@@ -237,6 +222,7 @@ export function useOfflineSync() {
     }
 
     return () => {
+      active = false;
       clearInterval(intervalId);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
