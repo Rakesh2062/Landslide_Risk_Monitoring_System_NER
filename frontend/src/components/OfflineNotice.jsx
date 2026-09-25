@@ -26,12 +26,13 @@ export default function OfflineNotice() {
   return (
     <div className="w-full transition-all duration-300">
       {!isOnline && (
-        <div className="bg-red-50 dark:bg-red-950/40 border-b border-red-200 px-4 py-2 text-xs text-[#E63946]">
+        <div className="bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-900 px-4 py-2 text-xs text-[#E63946]">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <WifiOff className="w-4 h-4 text-[#E63946] shrink-0" />
+              <WifiOff className="w-4 h-4 shrink-0" />
               <span>
-                <strong>{t('offline_notice.offline_title')}:</strong> {t('offline_notice.offline_desc')}
+                <strong>Offline</strong> — Cannot reach server. Reports submitted now are saved
+                on this device and will be sent automatically when you reconnect.
               </span>
             </div>
             {pendingCount > 0 && (
@@ -81,6 +82,7 @@ export default function OfflineNotice() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

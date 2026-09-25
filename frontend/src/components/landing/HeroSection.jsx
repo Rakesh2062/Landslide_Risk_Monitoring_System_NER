@@ -59,7 +59,7 @@ export default function HeroSection() {
           <p className="text-base sm:text-lg md:text-xl text-slate-200 font-normal leading-relaxed max-w-2xl drop-shadow-sm">
             {t('landing.hero.description', {
               defaultValue:
-                'Real-time landslide early warning system for East Khasi Hills, Meghalaya — leveraging geospatial data, weather intelligence and community participation for a safer tomorrow.',
+                'Real-time landslide early warning system for North Eastern Region — leveraging geospatial data, weather intelligence and community participation for a safer tomorrow.',
             })}
           </p>
 
@@ -86,7 +86,7 @@ export default function HeroSection() {
               <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
                 <Check className="w-3 h-3 stroke-[3]" />
               </span>
-              <span>{t('landing.hero.badge_safer_meghalaya', { defaultValue: 'A Safer Meghalaya' })}</span>
+              <span>{t('landing.hero.badge_safer_meghalaya', { defaultValue: 'A Safer North Eastern Region' })}</span>
             </div>
           </div>
         </div>

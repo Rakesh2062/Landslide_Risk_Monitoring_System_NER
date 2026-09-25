@@ -37,7 +37,6 @@ class RiskZoneOut(BaseModel):
 class PredictRiskIn(BaseModel):
     slope: float
     aspect: float
-    elevation: float
     curvature: float
     dist_to_drainage: float
     rainfall_24h: float
@@ -255,8 +254,9 @@ class LoginIn(BaseModel):
 class LoginOut(BaseModel):
     token: str
     role: str
-    district: Optional[str]
+    district: Optional[str] = None
     is_verified: bool = False
+    username: Optional[str] = None
 
 
 class GoogleAuthIn(BaseModel):

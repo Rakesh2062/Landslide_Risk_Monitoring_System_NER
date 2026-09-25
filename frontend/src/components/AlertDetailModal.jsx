@@ -133,8 +133,15 @@ export default function AlertDetailModal({ isOpen, onClose, alert, zones = [] })
                 className="z-10"
               >
                 <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  attribution="&copy; OpenStreetMap contributors"
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                  attribution="Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics"
+                  maxZoom={18}
+                  className="map-tiles-satellite"
+                />
+                <TileLayer
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                  maxZoom={18}
+                  className="map-tiles-overlay"
                 />
                 <Marker position={center} icon={createBeaconIcon(alert.severity)}>
                   <Popup>

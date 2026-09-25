@@ -10,7 +10,7 @@ from datetime import datetime
 from app.db.session import get_db
 from app.schemas.schemas import GoogleAuthIn, LoginIn, LoginOut, UserRegisterIn, UserRegisterOut
 from app.models.models import User, UserRoleEnum
-from app.core.security import verify_password, create_access_token, hash_password
+from app.core.security import verify_password, create_access_token, hash_password, get_current_user
 from app.core.config import settings
 
 router = APIRouter()
@@ -57,9 +57,15 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
             detail="Invalid username or password",
         )
     token = create_access_token(
-        data={"sub": user.username, "role": user.role.value, "district": user.district, "is_verified": user.is_verified}
+        data={"sub": user.username, "role": user.role.value, "district": user.district, "is_verified": bool(user.is_verified)}
     )
-    return {"token": token, "role": user.role.value, "district": user.district, "is_verified": user.is_verified}
+    return {
+        "token": token,
+        "role": user.role.value,
+        "district": user.district,
+        "is_verified": bool(user.is_verified),
+        "username": user.username,
+    }
 
 
 @router.post("/auth/google", response_model=LoginOut)
@@ -71,13 +77,28 @@ def google_auth(body: GoogleAuthIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No Google account is registered. Submit residency proof first.")
 
     token = create_access_token(
-        data={"sub": user.username, "role": user.role.value, "district": user.district, "is_verified": user.is_verified}
+        data={"sub": user.username, "role": user.role.value, "district": user.district, "is_verified": bool(user.is_verified)}
     )
     return {
         "token": token,
         "role": user.role.value,
         "district": user.district,
-        "is_verified": user.is_verified,
+        "is_verified": bool(user.is_verified),
+        "username": user.username,
+    }
+
+
+@router.get("/auth/me")
+def get_me(db: Session = Depends(get_db), current_user_token: dict = Depends(get_current_user)):
+    username = current_user_token.get("sub")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "username": user.username,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "district": user.district,
+        "is_verified": bool(user.is_verified),
     }
 
 

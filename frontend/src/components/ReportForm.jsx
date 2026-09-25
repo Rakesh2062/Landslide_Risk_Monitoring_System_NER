@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { submitFieldReport } from '../api/client';
 import { savePendingReport, getPendingReports } from '../db/indexedDb';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useOfflineSync, SYNC_CHANNEL } from '../hooks/useOfflineSync';
 import ReportDetailModal from './ReportDetailModal';
 import {
   Camera,
@@ -117,7 +117,6 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
     // Evidence photo is mandatory
     if (!photoFile && !photoPreview) {
       setPhotoError(true);
-      // Scroll to photo section
       document.getElementById('photo-upload-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -138,13 +137,34 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
       severity,
       language: i18n.language || 'en',
       timestamp,
-      // File is structured-cloneable in IndexedDB. The data URL is retained as
-      // a backwards-compatible fallback and for the offline report preview.
       photo_file: photoFile,
       photo_name: photoFile?.name || 'offline-evidence.jpg',
       photo_data: photoPreview,
     };
 
+    // ── OFFLINE PATH: save directly to IndexedDB, skip the API ────────────
+    if (!isOnline) {
+      try {
+        await savePendingReport(reportPayload);
+        await refreshPendingCount();
+        await loadReportsHistory();
+        setSubmissionFeedback({
+          type: 'offline_saved',
+          message: '📶 No connection — your report is saved on this device and will be sent automatically when you go online.',
+        });
+        setDescription('');
+        setPhotoPreview(null);
+        setPhotoFile(null);
+      } catch (saveErr) {
+        console.error('IndexedDB save failed:', saveErr);
+        setSubmissionFeedback({ type: 'error', message: 'Failed to save report locally. Please try again.' });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // ── ONLINE PATH: submit directly to the server ────────────────────────
     try {
       const formData = new FormData();
       formData.append('lat', lat);
@@ -155,9 +175,7 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
       formData.append('language', i18n.language || 'en');
       formData.append('client_report_id', clientReportId);
       formData.append('timestamp', timestamp);
-      if (photoFile) {
-        formData.append('photo', photoFile);
-      }
+      if (photoFile) formData.append('photo', photoFile);
 
       const res = await submitFieldReport(formData);
 
@@ -169,7 +187,7 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
         lng: parseFloat(lng),
         description: description.trim(),
         photo_url: res?.photo_url || photoPreview,
-        status: 'received',
+        status: res?.status || 'received',
         severity,
         reporter_type: reporterType,
         timestamp,
@@ -182,20 +200,20 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
         report_id: res?.report_id || 'FR-SUBMITTED',
         message: t('report_form.success_msg'),
       });
-
       setDescription('');
       setPhotoPreview(null);
       setPhotoFile(null);
       await loadReportsHistory();
     } catch (err) {
-      console.warn('Online submission failed, falling back to offline queue:', err);
+      // Server returned an error even though we thought we were online —
+      // save to IndexedDB as a safety net and let the sync push it later.
+      console.warn('Server submission failed, queuing offline:', err.message);
       await savePendingReport(reportPayload);
       await refreshPendingCount();
       await loadReportsHistory();
-
       setSubmissionFeedback({
         type: 'offline_saved',
-        message: t('report_form.offline_msg'),
+        message: '⚠ Submission failed — report saved locally and will be sent automatically.',
       });
     } finally {
       setIsSubmitting(false);

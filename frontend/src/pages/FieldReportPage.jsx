@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getFieldReports, updateFieldReportStatus, deleteFieldReport } from '../api/client';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useOfflineSync, SYNC_CHANNEL } from '../hooks/useOfflineSync';
 import ReportForm from '../components/ReportForm';
 import PageHeader from '../components/admin/PageHeader';
 import SectionCard from '../components/admin/SectionCard';

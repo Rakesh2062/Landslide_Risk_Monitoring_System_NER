@@ -86,7 +86,9 @@ def create_report(
         photo_url=photo_url,
         reporter_type=ReporterTypeEnum(reporter_type) if reporter_type else ReporterTypeEnum.citizen,
         language=language or "en",
-        status=ReportStatusEnum.received,
+        # Official/authority reports are verified ground-truth observations — auto-verify them.
+        # Citizen observations stay in the review queue until an authority confirms them.
+        status=ReportStatusEnum.verified if reporter_type == "official" else ReportStatusEnum.received,
         severity=SeverityEnum(severity) if severity else SeverityEnum.medium,
         submitted_at=timestamp or datetime.now(timezone.utc),
     )

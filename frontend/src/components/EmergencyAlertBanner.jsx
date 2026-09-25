@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { getAlerts } from '../api/client';
 import { emergencyAudio } from '../utils/emergencyAudio';
 import { emergencyNotifier } from '../utils/emergencyNotifier';
@@ -15,14 +16,15 @@ import {
   Radio,
   MapPin,
   Clock,
-  ExternalLink,
   ChevronRight,
-  Info,
+  Activity,
+  AlertCircle
 } from 'lucide-react';
 import AlertHistoryModal from './AlertHistoryModal';
 
 export default function EmergencyAlertBanner() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   // Acknowledged alert IDs
   const [acknowledgedIds, setAcknowledgedIds] = useState(() => {
@@ -34,7 +36,6 @@ export default function EmergencyAlertBanner() {
     }
   });
 
-  // Muted audio state (persisted per session)
   const [isMuted, setIsMuted] = useState(() => {
     try {
       return sessionStorage.getItem('ner_buzzer_muted') === 'true';
@@ -43,27 +44,22 @@ export default function EmergencyAlertBanner() {
     }
   });
 
-  // Notification permission state
   const [notifPermission, setNotifPermission] = useState(() =>
     emergencyNotifier.getNotificationPermission()
   );
 
-  // Audio unlocked state
   const [audioUnlocked, setAudioUnlocked] = useState(() =>
     emergencyAudio.isUnlocked()
   );
 
-  // History modal visibility
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // Poll alerts every 10 seconds
   const { data: alerts = [] } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => getAlerts(),
     refetchInterval: 10000,
   });
 
-  // Filter for unacknowledged HIGH or CRITICAL landslide alerts
   const deliveryChannels = (alert) => {
     const channels = alert.channels || alert.sent_via || ['app'];
     return Array.isArray(channels) ? channels : ['app'];
@@ -77,44 +73,30 @@ export default function EmergencyAlertBanner() {
     return isEmergency && isAppDelivery && !acknowledgedIds.includes(a.alert_id);
   });
 
-  // Pick highest severity active alert (critical first, then latest high)
   const currentHazard = activeHazardAlerts.sort((a, b) => {
     if (a.severity === 'critical' && b.severity !== 'critical') return -1;
     if (b.severity === 'critical' && a.severity !== 'critical') return 1;
     return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
   })[0];
 
-  // Whenever a new high/critical hazard arrives:
   useEffect(() => {
     if (!currentHazard) return;
-
-    // 1. Record generated alert into persistent Alert History
     emergencyNotifier.recordAlertGenerated(currentHazard);
-
     const channels = deliveryChannels(currentHazard);
-
-    // 2. Dispatch a browser / PWA notification only when the App channel was selected.
     if (channels.includes('app')) {
       emergencyNotifier.dispatchEmergencyNotification(currentHazard);
     }
-
-    // 3. Every new HIGH / CRITICAL warning must draw attention immediately.
-    // The selected delivery channels still control push/SMS; this in-app
-    // emergency signal covers alerts generated from warning observations too.
     if (!isMuted && !emergencyNotifier.hasPlayedSound(currentHazard.alert_id)) {
       emergencyAudio.playEmergencySignal();
       emergencyNotifier.markSoundPlayed(currentHazard.alert_id);
     }
   }, [currentHazard?.alert_id, isMuted]);
 
-  // Request browser notification permission and unlock audio context
   const handleEnableAlerts = async () => {
     await emergencyAudio.unlockAudio();
     setAudioUnlocked(true);
-
     const perm = await emergencyNotifier.requestNotificationPermission();
     setNotifPermission(perm);
-
     if (currentHazard) {
       const channels = deliveryChannels(currentHazard);
       if (channels.includes('app')) {
@@ -126,7 +108,6 @@ export default function EmergencyAlertBanner() {
     }
   };
 
-  // Toggle Mute
   const toggleMute = () => {
     setIsMuted((prev) => {
       const next = !prev;
@@ -140,11 +121,9 @@ export default function EmergencyAlertBanner() {
     });
   };
 
-  // Acknowledge alert
   const handleAcknowledge = (alertId) => {
     emergencyAudio.stop();
     emergencyNotifier.recordAlertAcknowledged(alertId);
-
     setAcknowledgedIds((prev) => {
       const next = [...prev, alertId];
       try {
@@ -154,10 +133,17 @@ export default function EmergencyAlertBanner() {
     });
   };
 
-  // Manually re-test / re-play the emergency sound
   const handleReplaySignal = () => {
     emergencyAudio.unlockAudio();
     emergencyAudio.playEmergencySignal();
+  };
+
+  const handleViewOnMap = () => {
+    if (window.location.pathname.startsWith('/citizen')) {
+      navigate('/citizen/map');
+    } else {
+      navigate('/map');
+    }
   };
 
   if (!currentHazard) {
@@ -178,7 +164,7 @@ export default function EmergencyAlertBanner() {
     currentHazard.recommended_action ||
     (isCritical
       ? 'IMMEDIATE EVACUATION: Move away from vulnerable hillside dwellings and steep slopes. Avoid travel on NH-206 / NH-40 passes until clearance is issued.'
-      : 'HIGH ALERT: Exercise extreme vigilance near steep road cuttings. Monitor culvert runoff and avoid non-essential hillside travel.');
+      : 'HIGH ALERT: Exercise extreme vigilance near steep road cuttings. Monitor culvert runoff and avoid non-essential travel.');
 
   const formattedTime = currentHazard.timestamp
     ? new Date(currentHazard.timestamp).toLocaleString([], {
@@ -195,182 +181,201 @@ export default function EmergencyAlertBanner() {
       <div
         role="alert"
         aria-live="assertive"
-        className={`relative w-full z-20 border-b shadow-2xl transition-all ${
-          isCritical
-            ? 'bg-[#180407] border-red-600 text-white'
-            : 'bg-[#1a0c02] border-amber-500 text-white'
-        }`}
+        className="relative w-full z-20 mb-6 bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden flex flex-col"
       >
-        {/* Top government strobe accent line */}
-        <div
-          className={`h-1.5 w-full ${
-            isCritical
-              ? 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500 animate-pulse'
-              : 'bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 animate-pulse'
-          }`}
-        />
+        {/* Top Accent Bar */}
+        <div className={`h-1 w-full ${isCritical ? 'bg-red-600 animate-pulse' : 'bg-amber-500'}`} />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3">
-          
-          {/* Main header row */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="flex flex-col">
+          {/* Section 1: Header (Severity + What Happened + Status) */}
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start justify-between gap-4 bg-slate-50/50">
+            <div className="flex items-start gap-4">
+              <div className={`shrink-0 flex items-center justify-center w-12 h-12 rounded-lg border shadow-sm ${isCritical ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                <AlertTriangle className="w-7 h-7 animate-pulse" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${isCritical ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
+                    {isCritical ? 'CRITICAL SEVERITY' : 'HIGH SEVERITY'}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Activity className="w-3 h-3" /> ACTIVE DIRECTIVE
+                  </span>
+                </div>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+                  {t('emergency_alerts.emergency_warning', { defaultValue: 'Landslide Emergency Warning' })}
+                </h2>
+              </div>
+            </div>
+            <div className="flex flex-col sm:items-end text-sm">
+              <div className="flex items-center gap-2 font-bold text-red-600 mb-1">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
+                LIVE STATUS
+              </div>
+              <div className="text-xs text-slate-500 font-mono flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                {formattedTime}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Dense Information Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 bg-white">
             
-            {/* Warning title & badges */}
-            <div className="flex items-start sm:items-center gap-3">
-              <div
-                className={`shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl shadow-lg border ${
-                  isCritical
-                    ? 'bg-red-600 border-red-400 text-white shadow-red-900/50'
-                    : 'bg-amber-600 border-amber-400 text-white shadow-amber-900/50'
-                }`}
-              >
-                <AlertTriangle className="w-6 h-6 animate-bounce" />
+            {/* Left Column: Context (Where & Why) */}
+            <div className="lg:col-span-4 p-5 flex flex-col gap-5">
+              {/* Where */}
+              <div>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" /> Incident Location
+                </h3>
+                <div className="bg-slate-50 border border-slate-200 rounded p-3">
+                  <div className="font-black text-slate-800 mb-1 text-base">{currentHazard.village || 'Sohra Sector'}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                      ZONE: {currentHazard.zone_id}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                      ID: {currentHazard.alert_id}
+                    </span>
+                  </div>
+                  {currentHazard.lat && currentHazard.lng && (
+                    <div className="text-[10px] font-mono text-slate-400 mt-2">
+                      COORD: {currentHazard.lat.toFixed(4)}, {currentHazard.lng.toFixed(4)}
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Why */}
               <div>
-                <div className="flex items-center flex-wrap gap-2">
-                  <span className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5 uppercase">
-                    <span>🚨</span>
-                    <span>{t('emergency_alerts.emergency_warning', { defaultValue: 'Emergency Warning' })}</span>
-                  </span>
-
-                  <span
-                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wider shadow-sm ${
-                      isCritical
-                        ? 'bg-red-600 text-white border border-red-400'
-                        : 'bg-amber-600 text-white border border-amber-400'
-                    }`}
-                  >
-                    {isCritical
-                      ? t('emergency_alerts.critical_risk', { defaultValue: 'CRITICAL RISK' })
-                      : t('emergency_alerts.high_risk', { defaultValue: 'HIGH RISK' })}
-                  </span>
-
-                  <span className="flex items-center gap-1 text-xs font-bold text-slate-200 bg-white/10 px-2.5 py-0.5 rounded border border-white/10">
-                    <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{currentHazard.village || 'Sohra Sector'}</span>
-                    <span className="text-slate-400 text-[10px] font-mono">
-                      ({currentHazard.zone_id})
-                    </span>
-                  </span>
-
-                  <span className="flex items-center gap-1 text-[11px] text-slate-300 font-mono">
-                    <Clock className="w-3 h-3 text-slate-400" />
-                    <span>{formattedTime}</span>
-                  </span>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" /> Source & Observation
+                </h3>
+                <div className="bg-slate-50 border border-slate-200 rounded p-3">
+                  <div className="text-[10px] font-bold text-[#006B4F] bg-[#EAF5F0] border border-[#006B4F]/20 px-2 py-0.5 rounded inline-block mb-2 uppercase">
+                    {currentHazard.channels?.includes('siren') ? 'Automated Sensor Trigger' : 'Verified Field Report'}
+                  </div>
+                  <p className="text-sm font-medium text-slate-700 leading-snug">
+                    {currentHazard.message}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Action buttons (Mute, Acknowledge, Enable Alerts, History) */}
-            <div className="flex items-center flex-wrap gap-2">
-              {/* Permission helper button if notifications aren't granted yet */}
+            {/* Middle Column: Action (What to do & Current Status) */}
+            <div className="lg:col-span-5 p-5 flex flex-col justify-between">
+              <div>
+                <h3 className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Mandated Action
+                </h3>
+                <div className="bg-red-50/50 border border-red-200 rounded-lg p-4 h-full relative overflow-hidden shadow-sm">
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600"></div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-bold text-red-800 uppercase tracking-wider">Directive</span>
+                    <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded font-black tracking-wider shadow-sm">URGENT</span>
+                  </div>
+                  <p className="text-base font-bold text-slate-900 leading-relaxed">
+                    {recommendedAction}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-5">
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Response Required</h3>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-black text-slate-800">Awaiting Acknowledgement</span>
+                    <span className="text-xs text-slate-500 font-medium">Confirm receipt of this directive</span>
+                  </div>
+                  <button
+                    onClick={() => handleAcknowledge(currentHazard.alert_id)}
+                    className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-md text-sm font-black transition-all shadow-sm active:scale-95 border border-red-700"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    ACKNOWLEDGE
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Map Preview */}
+            <div className="lg:col-span-3 p-5 flex flex-col bg-slate-50/30">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" /> Spatial Context
+              </h3>
+              <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col h-full shadow-sm">
+                
+                {/* Simulated Map Area */}
+                <div className="w-full h-32 bg-slate-100 rounded-md mb-4 flex flex-col items-center justify-center border border-slate-200 relative overflow-hidden group">
+                   {/* Grid Pattern overlay */}
+                   <div 
+                     className="absolute inset-0 opacity-10 mix-blend-multiply" 
+                     style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #000 1px, transparent 0)', backgroundSize: '16px 16px' }}
+                   ></div>
+                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-200/50"></div>
+                   
+                   <div className="relative z-10 flex flex-col items-center">
+                     <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center animate-pulse mb-1">
+                       <MapPin className="text-red-600 w-5 h-5" />
+                     </div>
+                     <span className="text-[10px] font-bold text-slate-500 tracking-widest bg-white/80 px-2 py-0.5 rounded backdrop-blur-sm shadow-sm">
+                       {currentHazard.zone_id}
+                     </span>
+                   </div>
+                </div>
+
+                <button
+                  onClick={handleViewOnMap}
+                  className="w-full mt-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-sm font-bold transition-all shadow-sm active:scale-95"
+                >
+                  View on Risk Map <ChevronRight className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Section 3: Utility Footer */}
+          <div className="bg-slate-50 px-5 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
               {notifPermission !== 'granted' && (
                 <button
-                  type="button"
                   onClick={handleEnableAlerts}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all animate-pulse"
-                  title="Grant notification & audio permissions for emergency warning broadcasts"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-[11px] font-bold transition-colors"
                 >
-                  <BellRing className="w-3.5 h-3.5" />
-                  <span>{t('emergency_alerts.enable_alerts', { defaultValue: 'Enable Emergency Alerts' })}</span>
+                  <BellRing className="w-3.5 h-3.5" /> Enable Alerts
                 </button>
               )}
-
-              {/* Mute Audio Button */}
               <button
-                type="button"
                 onClick={toggleMute}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-md border border-white/20 transition-all shadow-sm"
-                title={isMuted ? 'Unmute Emergency Sound' : 'Mute Emergency Sound'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-white text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-bold transition-colors shadow-sm"
               >
-                {isMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 text-amber-300" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-300 animate-pulse" />
-                )}
-                <span>{isMuted ? t('emergency_alerts.unmute', { defaultValue: 'Unmute' }) : t('emergency_alerts.mute', { defaultValue: 'Mute' })}</span>
+                {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {isMuted ? 'Unmute' : 'Mute'}
               </button>
-
-              {/* Re-play audio signal */}
               <button
-                type="button"
                 onClick={handleReplaySignal}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white text-xs font-medium transition-colors border border-white/10"
-                title="Test / Replay emergency attention signal"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-white text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-bold transition-colors shadow-sm hidden sm:inline-flex"
               >
-                <Radio className="w-3 h-3 text-amber-400" />
-                <span>Test Audio</span>
+                <Radio className="w-3.5 h-3.5" /> Test Audio
               </button>
-
-              {/* Acknowledge Button */}
               <button
-                type="button"
-                onClick={() => handleAcknowledge(currentHazard.alert_id)}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-black transition-all shadow-md active:scale-95 border border-red-400"
-                title="Acknowledge this emergency warning"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{t('emergency_alerts.acknowledge_warning', { defaultValue: 'Acknowledge Warning' })}</span>
-              </button>
-
-              {/* View History Button */}
-              <button
-                type="button"
                 onClick={() => setIsHistoryOpen(true)}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition-all"
-                title="View emergency alert history"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-white text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-bold transition-colors shadow-sm"
               >
-                <History className="w-3.5 h-3.5 text-sky-400" />
-                <span className="hidden sm:inline">{t('emergency_alerts.alert_history', { defaultValue: 'Alert History' })}</span>
+                <History className="w-3.5 h-3.5" /> Alert History
               </button>
             </div>
-          </div>
-
-          {/* Warning Message & Recommended Action Card */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
             
-            {/* Warning Message */}
-            <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-1">
-              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
-                {t('emergency_alerts.warning_observation', { defaultValue: 'Warning Observation' })}
-              </span>
-              <p className="text-xs sm:text-sm font-medium text-slate-100 leading-snug">
-                {currentHazard.message}
-              </p>
+            <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-black tracking-widest uppercase">
+              <ShieldCheck className="w-3.5 h-3.5" /> NDMA Incident Format
             </div>
-
-            {/* Recommended Action */}
-            <div className="p-3 rounded-xl bg-red-950/40 border border-red-600/40 space-y-1">
-              <span className="text-[11px] font-bold text-rose-300 uppercase tracking-wider block flex items-center gap-1">
-                <span>{t('emergency_alerts.recommended_action', { defaultValue: 'Recommended Action' })}</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-800/80 text-white font-black">
-                  URGENT
-                </span>
-              </span>
-              <p className="text-xs sm:text-sm font-semibold text-rose-100 leading-snug">
-                {recommendedAction}
-              </p>
-            </div>
-          </div>
-
-          {/* Architecture disclaimer footer */}
-          <div className="flex items-center justify-between text-[10px] text-slate-400 border-t border-white/10 pt-2">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              <span>
-                Standard Emergency Warning Signal (Civil Protection Simulation) • Formatted for CAP / NDMA / IPAWS integration.
-              </span>
-            </div>
-            <span className="hidden md:inline font-mono text-slate-500">
-              ID: {currentHazard.alert_id}
-            </span>
           </div>
 
         </div>
       </div>
 
-      {/* Alert History Modal */}
       {isHistoryOpen && (
         <AlertHistoryModal
           isOpen={isHistoryOpen}

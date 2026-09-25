@@ -66,6 +66,19 @@ export async function getSoilMoisture(zone_id) {
   return request(`/sensors/soil-moisture${query}`);
 }
 
+// Fetch real-time soil moisture from Open-Meteo via backend
+export async function getLiveSoilMoisture(lat, lng) {
+  const query = new URLSearchParams({ lat, lng }).toString();
+  return request(`/weather/soil-moisture-live?${query}`);
+}
+
+// Run the ML model live for a zone (terrain from DB + live weather/soil from Open-Meteo)
+export async function getZoneLivePrediction(zone_id) {
+  return request(`/risk-zones/${encodeURIComponent(zone_id)}/live-predict`, {
+    method: 'POST',
+  });
+}
+
 /* =========================================================================
    3. GIS / INFRASTRUCTURE
    ========================================================================= */
@@ -138,10 +151,19 @@ export async function getAlerts(params = {}) {
 }
 
 export async function createAlert(payload) {
-  return request('/alerts', {
+  const result = await request('/alerts', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  try {
+    const channel = new BroadcastChannel('ner_emergency_alerts');
+    channel.postMessage({ type: 'NEW_ALERT', alert: result });
+    channel.close();
+  } catch (e) { }
+  try {
+    localStorage.setItem('ner_latest_alert_broadcast', JSON.stringify({ id: result?.alert_id, time: Date.now() }));
+  } catch (e) { }
+  return result;
 }
 
 /* =========================================================================
@@ -175,8 +197,14 @@ export async function login(username, password) {
   });
 
   if (result.token) {
+    const profile = {
+      ...result,
+      username: result.username || username,
+      is_verified: Boolean(result.is_verified),
+    };
     localStorage.setItem('auth_token', result.token);
-    localStorage.setItem('user_profile', JSON.stringify(result));
+    localStorage.setItem('user_profile', JSON.stringify(profile));
+    return profile;
   }
 
   return result;
@@ -196,10 +224,20 @@ export async function authenticateWithGoogle(credential) {
   });
 
   if (result.token) {
+    const profile = {
+      ...result,
+      username: result.username || 'Google User',
+      is_verified: Boolean(result.is_verified),
+    };
     localStorage.setItem('auth_token', result.token);
-    localStorage.setItem('user_profile', JSON.stringify(result));
+    localStorage.setItem('user_profile', JSON.stringify(profile));
+    return profile;
   }
   return result;
+}
+
+export async function getCurrentUser() {
+  return request('/auth/me');
 }
 
 export async function registerWithGoogle(formData) {

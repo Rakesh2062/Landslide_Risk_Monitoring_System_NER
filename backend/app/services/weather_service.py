@@ -20,6 +20,7 @@ from app.db.session import engine
 _LIVE_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 _LIVE_CACHE_TTL_SECONDS = 60
 _live_weather_cache: dict[tuple[float, float], tuple[float, dict]] = {}
+_live_soil_cache: dict[tuple[float, float], tuple[float, dict]] = {}
 
 
 def _sum(values: list[float]) -> float:
@@ -158,3 +159,51 @@ def get_soil_moisture(db: Session, zone_id: Optional[str] = None) -> List[dict]:
             "timestamp": sensor.recorded_at,
         })
     return results
+
+
+def get_live_soil_moisture(lat: float, lng: float) -> Optional[dict]:
+    """
+    Fetch real-time volumetric soil moisture (0-1 cm depth) from Open-Meteo.
+    Returns a dict with 'moisture' (m³/m³) and 'source', or None on failure.
+    Cached for 60 seconds per coordinate pair.
+    """
+    key = (round(lat, 4), round(lng, 4))
+    cached = _live_soil_cache.get(key)
+    if cached and monotonic() - cached[0] < _LIVE_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        response = httpx.get(
+            _LIVE_WEATHER_URL,
+            params={
+                "latitude": lat,
+                "longitude": lng,
+                "hourly": "soil_moisture_0_to_1cm",
+                "past_hours": 1,
+                "forecast_hours": 0,
+                "timezone": "auto",
+            },
+            timeout=8.0,
+        )
+        response.raise_for_status()
+        hourly = response.json().get("hourly", {})
+        sm_values = hourly.get("soil_moisture_0_to_1cm", [])
+        # Filter out None values and take the most recent
+        valid = [v for v in sm_values if v is not None]
+        if not valid:
+            return None
+
+        moisture_raw = float(valid[-1])
+        # Open-Meteo returns m³/m³; clamp to [0, 1] for our model
+        moisture = round(min(1.0, max(0.0, moisture_raw)), 4)
+
+        result = {
+            "moisture": moisture,
+            "source": "Open-Meteo live (soil_moisture_0_to_1cm)",
+            "sensor_id": "OM-API",
+        }
+        _live_soil_cache[key] = (monotonic(), result)
+        return result
+    except httpx.HTTPError:
+        return None
+
