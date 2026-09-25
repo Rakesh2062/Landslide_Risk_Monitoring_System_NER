@@ -51,6 +51,11 @@ export default function FieldReportPage() {
 
   useEffect(() => {
     loadReports();
+    const handleSync = () => {
+      loadReports();
+    };
+    window.addEventListener('reports-synced', handleSync);
+    return () => window.removeEventListener('reports-synced', handleSync);
   }, []);
 
   const handleUpdateStatus = async (reportId, newStatus) => {

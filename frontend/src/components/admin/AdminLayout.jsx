@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getAlerts, getRiskZones, getFieldReports } from '../../api/client';
+import { useUnreadBadge } from '../../context/UnreadBadgeContext';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 import OfflineNotice from '../OfflineNotice';
 import EmergencyAlertBanner from '../EmergencyAlertBanner';
-
 import UserVerificationModal from './UserVerificationModal';
 
 function AdminFooter() {
@@ -37,6 +37,8 @@ export default function AdminLayout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isVerificationOpen, setIsVerificationOpen] = useState(false);
 
+  const { unreadReportsCount, unreadAlertsCount } = useUnreadBadge();
+
   const { data: alerts = [] } = useQuery({
     queryKey: ['alerts_nav'],
     queryFn: () => getAlerts(),
@@ -47,25 +49,17 @@ export default function AdminLayout() {
     queryFn: () => getRiskZones(),
     staleTime: 1000 * 60,
   });
-  const { data: reports = [] } = useQuery({
-    queryKey: ['reports_nav'],
-    queryFn: () => getFieldReports(),
-    staleTime: 1000 * 60,
-  });
-
-  const pendingReports = reports.filter(r => r.status === 'received').length;
 
   return (
     <div className="min-h-screen bg-[#F5F7F6] dark:bg-black text-[#1F2937] dark:text-zinc-100 transition-colors flex">
-
       {/* ── Fixed Sidebar ─────────────────────────────────── */}
       <Sidebar
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
-        activeAlertCount={alerts.length}
-        pendingReportCount={pendingReports}
+        activeAlertCount={unreadAlertsCount}
+        pendingReportCount={unreadReportsCount}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />

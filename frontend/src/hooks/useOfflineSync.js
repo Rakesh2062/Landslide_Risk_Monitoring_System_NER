@@ -44,9 +44,12 @@ export function useOfflineSync() {
   const refreshPendingCount = useCallback(async () => {
     try {
       const reports = await getPendingReports();
-      setPendingCount(reports.length);
+      const count = reports ? reports.length : 0;
+      setPendingCount(count);
+      return count;
     } catch {
       setPendingCount(0);
+      return 0;
     }
   }, []);
 
@@ -56,7 +59,8 @@ export function useOfflineSync() {
     try {
       setIsSyncing(true);
       const pending = await getPendingReports();
-      if (pending.length === 0) {
+      if (!pending || pending.length === 0) {
+        setPendingCount(0);
         setIsSyncing(false);
         return;
       }
@@ -64,12 +68,45 @@ export function useOfflineSync() {
       const syncedIds = [];
       for (const report of pending) {
         try {
-          // Use the normal multipart endpoint so the evidence photo receives
-          // exactly the same server-side storage treatment as an online report.
-          await submitFieldReport(buildQueuedReportFormData(report));
+          // Send multipart formData to match standard report submission
+          const res = await submitFieldReport(buildQueuedReportFormData(report));
           syncedIds.push(report.client_report_id);
+
+          // Update local submission history so it transitions from pending_sync to received
+          try {
+            const savedHistory = JSON.parse(localStorage.getItem('my_local_reports') || '[]');
+            const updatedHistory = savedHistory.map((item) => {
+              if (item.client_report_id === report.client_report_id) {
+                return {
+                  ...item,
+                  report_id: res?.report_id || item.report_id || `FR-${Date.now().toString().slice(-4)}`,
+                  status: 'received',
+                  is_pending: false,
+                };
+              }
+              return item;
+            });
+            if (!savedHistory.some((item) => item.client_report_id === report.client_report_id)) {
+              updatedHistory.unshift({
+                report_id: res?.report_id || `FR-${Date.now().toString().slice(-4)}`,
+                client_report_id: report.client_report_id,
+                lat: report.lat,
+                lng: report.lng,
+                description: report.description,
+                photo_url: res?.photo_url || report.photo_data,
+                status: 'received',
+                severity: report.severity || 'medium',
+                reporter_type: report.reporter_type || 'citizen',
+                timestamp: report.timestamp || new Date().toISOString(),
+                is_pending: false,
+              });
+            }
+            localStorage.setItem('my_local_reports', JSON.stringify(updatedHistory));
+          } catch (storageErr) {
+            console.warn('Failed to update local storage history:', storageErr);
+          }
         } catch (error) {
-          // Keep failed reports (and their photos) in the queue for retry.
+          // Keep failed reports in the queue for retry on next sync cycle
           console.warn(`Offline report ${report.client_report_id} will be retried:`, error);
         }
       }
@@ -78,15 +115,22 @@ export function useOfflineSync() {
         await clearSyncedReports(syncedIds);
         await refreshPendingCount();
         setLastSyncResult({
-          time: new Date().toLocaleTimeString(),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           syncedCount: syncedIds.length,
           status: 'success',
         });
+
+        // Broadcast to all pages to auto-refresh feeds and tables
+        window.dispatchEvent(
+          new CustomEvent('reports-synced', {
+            detail: { syncedCount: syncedIds.length, syncedIds },
+          })
+        );
       }
     } catch (err) {
-      console.error('Offline sync failed:', err);
+      console.error('Offline automatic sync failed:', err);
       setLastSyncResult({
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         status: 'error',
         error: err.message,
       });
@@ -96,7 +140,12 @@ export function useOfflineSync() {
   }, [isSyncing, refreshPendingCount]);
 
   useEffect(() => {
-    refreshPendingCount();
+    // Initial check and auto-sync if already online
+    refreshPendingCount().then((count) => {
+      if (count > 0 && navigator.onLine) {
+        triggerSync();
+      }
+    });
 
     const handleOnline = () => {
       setIsOnline(true);
@@ -110,6 +159,16 @@ export function useOfflineSync() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Periodic check to automatically flush pending offline reports as soon as network is live
+    const intervalId = setInterval(async () => {
+      if (navigator.onLine && !isSyncing) {
+        const count = await refreshPendingCount();
+        if (count > 0) {
+          triggerSync();
+        }
+      }
+    }, 3000);
+
     // Register ServiceWorker background sync if supported
     if ('serviceWorker' in navigator && 'SyncManager' in window) {
       navigator.serviceWorker.ready
@@ -117,16 +176,16 @@ export function useOfflineSync() {
           return registration.sync.register('sync-field-reports');
         })
         .catch((err) => {
-          // Background sync not allowed or rejected, browser event fallback remains active
           console.debug('Background Sync registration skipped:', err);
         });
     }
 
     return () => {
+      clearInterval(intervalId);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [triggerSync, refreshPendingCount]);
+  }, [triggerSync, refreshPendingCount, isSyncing]);
 
   return {
     isOnline,
