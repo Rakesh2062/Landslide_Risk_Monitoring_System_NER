@@ -19,3 +19,4 @@ firebase-admin==6.9.0
 joblib
 numpy
 xgboost
+google-generativeai==0.8.6

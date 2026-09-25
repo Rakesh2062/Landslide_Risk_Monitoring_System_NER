@@ -43,11 +43,28 @@ const createBlockageIcon = (status) => {
   });
 };
 
-// Helper function to find midpoint of coordinate array
-const getMidpoint = (coords) => {
+// Returns the coordinate closest to the geographic centroid of the road.
+// This ensures the blockage marker appears at the most central/interior
+// point of the affected segment — guaranteed to land inside the hazard circle
+// when road coordinates are placed within the zone.
+const getBlockagePoint = (coords) => {
   if (!coords || coords.length === 0) return null;
-  const midIndex = Math.floor(coords.length / 2);
-  return coords[midIndex];
+  if (coords.length === 1) return coords[0];
+
+  // Compute centroid (average lat/lng)
+  const sumLat = coords.reduce((s, c) => s + c[0], 0);
+  const sumLng = coords.reduce((s, c) => s + c[1], 0);
+  const cLat = sumLat / coords.length;
+  const cLng = sumLng / coords.length;
+
+  // Pick the coordinate with minimum distance to centroid
+  let closest = coords[0];
+  let minDist = Infinity;
+  for (const c of coords) {
+    const d = Math.pow(c[0] - cLat, 2) + Math.pow(c[1] - cLng, 2);
+    if (d < minDist) { minDist = d; closest = c; }
+  }
+  return closest;
 };
 
 export default function RoadOverlay({ roads = [], onStatusUpdate }) {
@@ -58,7 +75,7 @@ export default function RoadOverlay({ roads = [], onStatusUpdate }) {
     <>
       {roads.map((road) => {
         const style = ROAD_STATUS_STYLES[road.status] || ROAD_STATUS_STYLES.clear;
-        const midpoint = getMidpoint(road.coordinates);
+        const blockagePoint = getBlockagePoint(road.coordinates);
         const isBlockedOrPartial = road.status === 'blocked' || road.status === 'partial';
 
         const popupContent = (
@@ -167,10 +184,10 @@ export default function RoadOverlay({ roads = [], onStatusUpdate }) {
               <Popup>{popupContent}</Popup>
             </Polyline>
 
-            {/* Pulsing Road Blockage Marker positioned at the midpoint of blocked/partial roads */}
-            {isBlockedOrPartial && midpoint && (
+            {/* Pulsing Road Blockage Marker positioned at the centroid-closest point of blocked/partial roads */}
+            {isBlockedOrPartial && blockagePoint && (
               <Marker
-                position={midpoint}
+                position={blockagePoint}
                 icon={createBlockageIcon(road.status)}
               >
                 <Popup>{popupContent}</Popup>

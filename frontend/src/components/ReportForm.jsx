@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { submitFieldReport } from '../api/client';
+import { submitFieldReport, analyzeRoadImage, createRoadFromReport } from '../api/client';
 import { savePendingReport, getPendingReports } from '../db/indexedDb';
 import { useOfflineSync, SYNC_CHANNEL } from '../hooks/useOfflineSync';
 import ReportDetailModal from './ReportDetailModal';
@@ -15,6 +15,13 @@ import {
   RefreshCw,
   Sparkles,
   ChevronRight,
+  ScanSearch,
+  AlertOctagon,
+  AlertTriangle,
+  CheckCircle,
+  HelpCircle,
+  Zap,
+  X,
 } from 'lucide-react';
 
 export default function ReportForm({ audience = 'official', onReportSubmitted }) {
@@ -36,6 +43,10 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
   const [myReports, setMyReports] = useState([]);
   const [activeTab, setActiveTab] = useState('form'); // form | history
   const [selectedReport, setSelectedReport] = useState(null);
+
+  // AI road analysis state
+  const [aiAnalysis, setAiAnalysis] = useState(null);   // null | { road_status, confidence, reason, hazard_type, suggested_severity }
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Quick hazard presets mapped to translation keys
   const hazardPresetKeys = [
@@ -97,16 +108,47 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
     );
   };
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setPhotoFile(file);
-      setPhotoError(false);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setPhotoFile(file);
+    setPhotoError(false);
+    setAiAnalysis(null);
+
+    // Show preview immediately
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(file);
+
+    // Auto-trigger AI road analysis
+    if (isOnline) {
+      setIsAnalyzing(true);
+      try {
+        const result = await analyzeRoadImage(file);
+        setAiAnalysis(result);
+        // Auto-fill severity if AI detected something actionable
+        if (result.road_status !== 'unknown' && result.suggested_severity) {
+          setSeverity(result.suggested_severity);
+        }
+        // Auto-fill description hint based on hazard type
+        if (!description && result.road_status !== 'clear' && result.road_status !== 'unknown') {
+          const hazardLabels = {
+            debris: 'Debris accumulation blocking the road',
+            landslide: 'Landslide material on the road carriageway',
+            flooding: 'Flooding and waterlogging on road surface',
+            crack: 'Tensile crack on road surface / hillside cut',
+            boulder: 'Dislodged rock boulders blocking carriageway',
+            other: 'Road hazard detected — obstruction on carriageway',
+          };
+          setDescription(hazardLabels[result.hazard_type] || hazardLabels.other);
+        }
+      } catch (err) {
+        console.warn('[AI Analysis] Failed:', err.message);
+        setAiAnalysis({ road_status: 'unknown', confidence: 'low', reason: 'Analysis unavailable.' });
+      } finally {
+        setIsAnalyzing(false);
+      }
     }
   };
 
@@ -179,6 +221,23 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
 
       const res = await submitFieldReport(formData);
 
+      // ── If AI detected a road blockage, register it on the map ───────────
+      const detectedStatus = aiAnalysis?.road_status;
+      if (detectedStatus === 'blocked' || detectedStatus === 'partial') {
+        try {
+          await createRoadFromReport({
+            report_id: res?.report_id || clientReportId,
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            road_status: detectedStatus,
+            road_name: `Report ${res?.report_id || clientReportId}: ${description.trim().slice(0, 60)}`,
+          });
+        } catch (roadErr) {
+          // Non-fatal — map update is best-effort
+          console.warn('[RoadFromReport] Failed:', roadErr.message);
+        }
+      }
+
       // Save to local submission history
       const savedHistory = JSON.parse(localStorage.getItem('my_local_reports') || '[]');
       savedHistory.unshift({
@@ -199,10 +258,12 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
         type: 'success',
         report_id: res?.report_id || 'FR-SUBMITTED',
         message: t('report_form.success_msg'),
+        road_registered: (aiAnalysis?.road_status === 'blocked' || aiAnalysis?.road_status === 'partial'),
       });
       setDescription('');
       setPhotoPreview(null);
       setPhotoFile(null);
+      setAiAnalysis(null);
       await loadReportsHistory();
     } catch (err) {
       // Server returned an error even though we thought we were online —
@@ -281,13 +342,21 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
               ) : (
                 <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 <p className="font-bold">
                   {submissionFeedback.type === 'success'
                     ? t('report_form.success_label', { id: submissionFeedback.report_id })
                     : t('report_form.offline_saved_label')}
                 </p>
                 <p>{submissionFeedback.message}</p>
+                {submissionFeedback.road_registered && (
+                  <div className="flex items-center gap-1.5 mt-1 px-2 py-1 rounded-lg bg-[#006B4F]/10 border border-[#006B4F]/30">
+                    <MapPin className="w-3 h-3 text-[#006B4F] shrink-0" />
+                    <span className="text-[10px] font-semibold text-[#006B4F] dark:text-emerald-400">
+                      Blocked road segment registered on the live map.
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -431,27 +500,128 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
               </label>
 
               {photoPreview ? (
-                <div className="relative rounded-xl overflow-hidden border border-[#D9E2DE] dark:border-zinc-700 max-h-52 bg-zinc-900">
-                  <img
-                    src={photoPreview}
-                    alt="Uploaded incident preview"
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhotoPreview(null);
-                      setPhotoFile(null);
-                    }}
-                    className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/70 text-white text-[11px] font-semibold hover:bg-[#E63946]"
-                  >
-                    {t('report_form.photo_remove')}
-                  </button>
+                <div className="space-y-2">
+                  {/* Image preview */}
+                  <div className="relative rounded-xl overflow-hidden border border-[#D9E2DE] dark:border-zinc-700 max-h-52 bg-zinc-900">
+                    <img
+                      src={photoPreview}
+                      alt="Uploaded incident preview"
+                      className="w-full h-full object-cover"
+                    />
+
+                    {/* Analyzing spinner overlay */}
+                    {isAnalyzing && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+                        <ScanSearch className="w-7 h-7 text-emerald-400 animate-pulse" />
+                        <p className="text-white text-xs font-bold tracking-wide">Analyzing with AI...</p>
+                        <p className="text-zinc-300 text-[10px]">Detecting road blockage status</p>
+                      </div>
+                    )}
+
+                    {/* Remove button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhotoPreview(null);
+                        setPhotoFile(null);
+                        setAiAnalysis(null);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 text-white hover:bg-[#E63946] transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* AI Analysis Result Badge */}
+                  {aiAnalysis && !isAnalyzing && (() => {
+                    const s = aiAnalysis.road_status;
+                    const isBlocked  = s === 'blocked';
+                    const isPartial  = s === 'partial';
+                    const isClear    = s === 'clear';
+                    const isUnknown  = s === 'unknown' || !s;
+
+                    const containerCls = isBlocked
+                      ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800'
+                      : isPartial
+                      ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
+                      : isClear
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800'
+                      : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700';
+
+                    const badgeCls = isBlocked
+                      ? 'bg-[#E63946] text-white'
+                      : isPartial
+                      ? 'bg-amber-500 text-white'
+                      : isClear
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-zinc-500 text-white';
+
+                    const StatusIcon = isBlocked ? AlertOctagon : isPartial ? AlertTriangle : isClear ? CheckCircle : HelpCircle;
+                    const statusLabel = isBlocked ? 'ROAD BLOCKED' : isPartial ? 'PARTIAL OBSTRUCTION' : isClear ? 'ROAD CLEAR' : 'UNKNOWN';
+
+                    const confidenceCls = aiAnalysis.confidence === 'high'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : aiAnalysis.confidence === 'medium'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-slate-500 dark:text-zinc-400';
+
+                    return (
+                      <div className={`rounded-xl border p-3 space-y-2 ${containerCls}`}>
+                        {/* Header row */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Zap className="w-3.5 h-3.5 text-purple-500" />
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-zinc-300">AI Road Analysis</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 ${badgeCls}`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {statusLabel}
+                          </span>
+                        </div>
+
+                        {/* Details grid */}
+                        <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-slate-400 dark:text-zinc-500 uppercase tracking-wide font-bold">Confidence</span>
+                            <span className={`font-black uppercase ${confidenceCls}`}>{aiAnalysis.confidence || '—'}</span>
+                          </div>
+                          {aiAnalysis.hazard_type && aiAnalysis.hazard_type !== 'none' && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-slate-400 dark:text-zinc-500 uppercase tracking-wide font-bold">Hazard Type</span>
+                              <span className="font-semibold text-slate-700 dark:text-zinc-200 capitalize">{aiAnalysis.hazard_type}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Reason */}
+                        {aiAnalysis.reason && (
+                          <p className="text-[10px] text-slate-600 dark:text-zinc-300 leading-relaxed border-t border-black/10 dark:border-white/10 pt-1.5">
+                            {aiAnalysis.reason}
+                          </p>
+                        )}
+
+                        {/* Map notice for blocked/partial */}
+                        {(isBlocked || isPartial) && (
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <MapPin className="w-3 h-3 text-[#006B4F] shrink-0" />
+                            <span className="text-[10px] text-[#006B4F] dark:text-emerald-400 font-semibold">
+                              This location will be marked as {isBlocked ? 'BLOCKED' : 'PARTIALLY BLOCKED'} on the map after submission.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <label className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-[#F5F7F6]/50 dark:bg-zinc-900/40 ${photoError ? 'border-[#E63946] bg-red-50/40 dark:bg-red-950/10' : 'border-[#D9E2DE] dark:border-zinc-800 hover:border-[#006B4F] dark:hover:border-emerald-500'}`}>
-                  <div className="p-3 rounded-full bg-white dark:bg-zinc-800 text-[#006B4F] dark:text-zinc-400 mb-2 shadow-sm border border-[#D9E2DE]">
-                    <Camera className="w-5 h-5" />
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="p-3 rounded-full bg-white dark:bg-zinc-800 text-[#006B4F] dark:text-zinc-400 shadow-sm border border-[#D9E2DE]">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <div className="p-2.5 rounded-full bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800">
+                      <ScanSearch className="w-4 h-4" />
+                    </div>
                   </div>
                   <span className="font-semibold text-[#1F2937] dark:text-zinc-200">
                     {t('report_form.photo_instruction')}
@@ -459,6 +629,12 @@ export default function ReportForm({ audience = 'official', onReportSubmitted })
                   <span className="text-[10px] text-slate-500 mt-0.5">
                     {t('report_form.photo_sub')}
                   </span>
+                  {isOnline && (
+                    <span className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
+                      <Zap className="w-3 h-3" />
+                      AI will auto-detect road blockage from the image
+                    </span>
+                  )}
                   <input
                     type="file"
                     accept="image/*"

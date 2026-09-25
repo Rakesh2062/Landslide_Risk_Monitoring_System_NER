@@ -15,6 +15,16 @@ from app.models.models import Road, Village, Zone, RoadStatusEnum
 from app.db.session import engine
 
 
+def make_line(coords):
+    """Build a geometry LINESTRING from [(lat, lng), ...] list."""
+    from shapely.geometry import LineString
+    from geoalchemy2.shape import from_shape
+    if engine.dialect.name == "sqlite":
+        pts = ", ".join(f"{lng} {lat}" for lat, lng in coords)
+        return f"LINESTRING({pts})"
+    return from_shape(LineString([(lng, lat) for lat, lng in coords]), srid=4326)
+
+
 def _parse_wkt_linestring(wkt: str) -> List[List[float]]:
     if not wkt or "LINESTRING(" not in wkt:
         return []
@@ -144,3 +154,91 @@ def get_villages(db: Session) -> List[dict]:
             "zone_id": village.zone_id,
         })
     return results
+
+
+def create_road_from_report(
+    db: Session,
+    report_id: str,
+    lat: float,
+    lng: float,
+    road_status: str,
+    road_name: Optional[str] = None,
+    district: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    Dynamically creates (or updates) a road segment at the citizen-reported
+    GPS location.  The segment is a short ±0.005° (~500 m) E-W line centred
+    on (lat, lng) so it renders visibly on the map.
+
+    If a citizen-report road already exists very close to this point
+    (within ~1 km), its status is updated instead of creating a duplicate.
+
+    Args:
+        report_id:   Field-report ID used to build a unique road_id
+        lat, lng:    GPS coordinates from the submitted report
+        road_status: "blocked" | "partial" | "clear"
+        road_name:   Optional descriptive name; falls back to a generated name
+        district:    Optional district name
+
+    Returns:
+        Road dict if successful, None on error
+    """
+    from datetime import datetime, timezone
+    from app.models.models import Road, RoadStatusEnum
+
+    if road_status not in ("blocked", "partial", "clear"):
+        road_status = "blocked"
+
+    # ── Check for a nearby existing citizen-report road (within ~0.01° ≈ 1 km)
+    THRESH = 0.01
+    existing_road = (
+        db.query(Road)
+        .filter(Road.road_id.like("RD-REPORT-%"))
+        .all()
+    )
+
+    for road in existing_road:
+        # Parse its geometry centroid to compare
+        geom_str = str(road.geometry) if engine.dialect.name == "sqlite" else None
+        try:
+            if geom_str and "LINESTRING(" in geom_str:
+                clean = geom_str.replace("LINESTRING(", "").replace(")", "")
+                pts = [p.strip().split() for p in clean.split(",")]
+                c_lng = sum(float(p[0]) for p in pts) / len(pts)
+                c_lat = sum(float(p[1]) for p in pts) / len(pts)
+                if abs(c_lat - lat) < THRESH and abs(c_lng - lng) < THRESH:
+                    # Update status of the existing road
+                    road.status = RoadStatusEnum(road_status)
+                    road.last_updated = datetime.now(timezone.utc)
+                    db.commit()
+                    db.refresh(road)
+                    return _road_to_dict(road)
+        except Exception:
+            pass
+
+    # ── Create a new short segment centred on the report point
+    new_road_id = f"RD-REPORT-{report_id}"
+    name = road_name or f"Citizen-Reported Hazard ({lat:.4f}, {lng:.4f})"
+
+    # 500 m segment: offset lng by ±0.005° (~550 m at equator)
+    half = 0.005
+    coords = [(lat, lng - half), (lat, lng), (lat, lng + half)]
+
+    try:
+        obj = Road(
+            road_id=new_road_id,
+            name=name,
+            status=RoadStatusEnum(road_status),
+            district=district or "East Khasi Hills",
+            geometry=make_line(coords),
+            last_updated=datetime.now(timezone.utc),
+        )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return _road_to_dict(obj)
+    except Exception as e:
+        print(f"[GIS] create_road_from_report error: {e}")
+        db.rollback()
+        return None
+

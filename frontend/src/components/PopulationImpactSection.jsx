@@ -766,7 +766,7 @@ export default function PopulationImpactSection({
                   <span>Demographic Hazard Exposure Methodology</span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-zinc-400">
-                  Regional Exposure Formula: $\sum(\text{Pop}_i \times \text{Risk}_i) / \sum\text{Pop}_i$
+                  {'Regional Exposure Formula: Σ(Popᵢ × Riskᵢ) / ΣPopᵢ'}
                 </p>
               </div>
               <button

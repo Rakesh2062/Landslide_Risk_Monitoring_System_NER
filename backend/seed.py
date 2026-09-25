@@ -204,7 +204,10 @@ def seed(db: Session):
             name="Shillong–Sohra Road (NH-6)",
             status=RoadStatusEnum.blocked,
             district="East Khasi Hills",
-            coords=[(25.4200, 91.7500), (25.3500, 91.7400), (25.2840, 91.7325)],
+            # Road passes FROM Mawphlang area INTO and THROUGH Sohra zone
+            # Sohra zone center: (25.2840, 91.7325), radius ~2200 m
+            # All 3 points are within or at the edge of the hazard circle
+            coords=[(25.3010, 91.7450), (25.2840, 91.7325), (25.2650, 91.7200)],
             last_updated=now - timedelta(hours=3),
         ),
         dict(
@@ -217,10 +220,11 @@ def seed(db: Session):
         ),
         dict(
             road_id="RD-0882",
-            name="Dawki–Shillong Road",
+            name="Dawki–Laitkynsew Road",
             status=RoadStatusEnum.partial,
             district="East Khasi Hills",
-            coords=[(25.1872, 92.0164), (25.3000, 91.9500), (25.4500, 91.9200)],
+            # Partial road passes through Laitkynsew zone (25.2400, 91.8100)
+            coords=[(25.1872, 92.0164), (25.2400, 91.8100), (25.3200, 91.8300)],
             last_updated=now - timedelta(hours=1),
         ),
         dict(

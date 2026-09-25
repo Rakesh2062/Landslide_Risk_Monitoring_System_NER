@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.schemas import FieldReportOut, FieldReportCreatedOut, FieldReportPatchIn
 from app.services import reports_service
+from app.services import image_analysis_service
 from app.core.security import get_current_user, get_current_user_optional
 
 router = APIRouter()
@@ -69,6 +70,26 @@ async def create_field_report(
         "photo_url": report.photo_url,
     }
 
+
+@router.post("/analyze-road-image", status_code=200)
+async def analyze_road_image(
+    photo: UploadFile = File(...),
+):
+    """
+    Accepts an uploaded image and uses Gemini Vision to detect whether
+    the road in the photo is blocked, partially blocked, or clear.
+
+    Returns:
+        road_status: "blocked" | "partial" | "clear" | "unknown"
+        confidence:  "high" | "medium" | "low"
+        reason:      Short human-readable explanation
+        hazard_type: Type of hazard detected
+        suggested_severity: "critical" | "high" | "medium" | "low"
+    """
+    image_bytes = await photo.read()
+    mime_type = photo.content_type or "image/jpeg"
+    result = image_analysis_service.analyze_road_image(image_bytes, mime_type)
+    return result
 
 @router.get("/field-reports", response_model=List[FieldReportOut])
 def list_field_reports(

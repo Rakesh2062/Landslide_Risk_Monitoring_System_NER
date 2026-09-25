@@ -141,6 +141,33 @@ export async function deleteFieldReport(report_id) {
   });
 }
 
+/**
+ * POST /analyze-road-image
+ * Sends a photo to the backend which uses Gemini Vision to detect road blockage.
+ * @param {File} photoFile - The image file to analyze
+ * @returns {Promise<{road_status, confidence, reason, hazard_type, suggested_severity}>}
+ */
+export async function analyzeRoadImage(photoFile) {
+  const formData = new FormData();
+  formData.append('photo', photoFile);
+  return request('/analyze-road-image', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+/**
+ * POST /roads/from-report
+ * Creates or updates a road segment on the map at the citizen's GPS location.
+ * @param {object} payload - { report_id, lat, lng, road_status, road_name? }
+ */
+export async function createRoadFromReport(payload) {
+  return request('/roads/from-report', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 /* =========================================================================
    5. ALERTS & NOTIFICATIONS
    ========================================================================= */
